@@ -122,7 +122,7 @@ void klog_printf(const char *fmt, ...)
 {
 	static char klog_print_buf[1024];
 
-	unsigned int flags;
+	unsigned long flags;
 	unsigned int len;
 	va_list args;
 
@@ -139,7 +139,7 @@ void klog_printf(const char *fmt, ...)
 
 void klog_write(const char *s, unsigned int count)
 {
-	unsigned int flags;
+	unsigned long flags;
 
 	spin_lock_irqsave(&klog_lock, flags);
 
