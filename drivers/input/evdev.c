@@ -402,6 +402,8 @@ static ssize_t evdev_read(struct file *file, char __user *buffer,
 	struct input_event event;
 	int retval;
 
+	retval = 0;
+
 	if (count < input_event_size())
 		return -EINVAL;
 
