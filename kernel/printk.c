@@ -713,6 +713,9 @@ static void call_console_drivers(unsigned start, unsigned end)
 static void emit_log_char(char c)
 {
 	LOG_BUF(log_end) = c;
+#ifdef CONFIG_KERNEL_LOG
+	klog_write_char(c);
+#endif
 	log_end++;
 	if (log_end - log_start > log_buf_len)
 		log_start = log_end - log_buf_len;
@@ -928,7 +931,7 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 	printed_len += vscnprintf(printk_buf + printed_len,
 				  sizeof(printk_buf) - printed_len, fmt, args);
 
-#ifdef CONFIG_KERNEL_LOG
+#if defined(CONFIG_KERNEL_LOG) && 0
 	klog_write(printk_buf, printed_len);
 #endif
 

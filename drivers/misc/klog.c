@@ -68,6 +68,9 @@ static char *klog_buffer;
 static struct klog_header *klog;
 static struct klog_buffer_header *klog_buf;
 
+static void klog_copy_logbuf(void);
+int log_buf_copy(char *dest, int idx, int len);
+
 static DEFINE_SPINLOCK(klog_lock);
 
 static inline struct klog_buffer_header *get_kbuf(int num)
@@ -118,6 +121,64 @@ static void _klog_write(const char *s, unsigned int count)
 	}
 }
 
+static void _klog_write_char(const char c)
+{
+	uint32_t vtail;
+
+	if (klog_buf == NULL)
+		return;
+
+
+	vtail = klog_buf->tail;
+	if (klog_buf->tail <= klog_buf->head)
+		vtail += klog_buf->len;
+
+	if (klog_buf->head + 1 >= vtail)
+		klog_buf->tail = inc_pointer(klog_buf, klog_buf->head, 2);
+	
+
+		/* copy */
+	*(klog_buf->data + klog_buf->head) = c;
+	klog_buf->head = inc_pointer(klog_buf, klog_buf->head, 1);
+}
+
+
+static void klog_copy_logbuf()
+{
+	unsigned int count;
+	unsigned int towrite;
+
+	if (klog_buf == NULL)
+		return;
+
+	count = 4096;
+
+	/* trim the write if it happens to be huge */
+	if (count > klog_buf->len - 1)
+		count = klog_buf->len - 1;
+
+	while (count > 0) {
+		/* write up to the end of the buffer */
+		towrite = MIN(count, klog_buf->len - klog_buf->head);
+
+		/* does this need to increment the tail? */
+		{
+			uint32_t vtail = klog_buf->tail;
+			if (klog_buf->tail <= klog_buf->head)
+				vtail += klog_buf->len;
+
+			if (klog_buf->head + towrite >= vtail)
+				klog_buf->tail = inc_pointer(klog_buf, klog_buf->head, towrite + 1);
+		}
+
+		/* copy */
+		log_buf_copy(klog_buf->data + klog_buf->head, 0, towrite);
+		klog_buf->head = inc_pointer(klog_buf, klog_buf->head, towrite);
+		count -= towrite;
+	}
+}
+
+
 void klog_printf(const char *fmt, ...)
 {
 	static char klog_print_buf[1024];
@@ -144,6 +205,17 @@ void klog_write(const char *s, unsigned int count)
 	spin_lock_irqsave(&klog_lock, flags);
 
 	_klog_write(s, count);
+
+	spin_unlock_irqrestore(&klog_lock, flags);
+}
+
+void klog_write_char(const char c)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&klog_lock, flags);
+
+	_klog_write_char(c);
 
 	spin_unlock_irqrestore(&klog_lock, flags);
 }
@@ -181,6 +253,8 @@ static int __init klog_init(void)
 	printk("found klog, len %u, using buffer number %d\n", klog->len, klog->current_buf);
 
 	klog_buf = get_kbuf(klog->current_buf);
+
+	klog_copy_logbuf();
 
 	klog_printf("welcome to klog, buffer at %p, length %d\n", klog_buf, klog_buf->len);
 
