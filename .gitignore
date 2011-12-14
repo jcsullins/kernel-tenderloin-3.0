@@ -79,3 +79,4 @@ GTAGS
 *.orig
 *~
 \#*#
+arch/arm/mach-msm/smd_rpc_sym.c
