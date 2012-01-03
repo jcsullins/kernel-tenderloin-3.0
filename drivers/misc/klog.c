@@ -263,7 +263,7 @@ static int __init klog_init(void)
 
 	spin_unlock_irqrestore(&klog_lock, flags);
 
-	klog_printf("welcome to klog, buffer at %p, length %d\n", klog_buf, klog_buf->len);
+	printk(KERN_INFO "welcome to klog, buffer at %p, length %d\n", klog_buf, klog_buf->len);
 
 	return 0;
 }
