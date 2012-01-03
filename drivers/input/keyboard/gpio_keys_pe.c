@@ -342,7 +342,7 @@ gpio_keys_debounce_timer(unsigned long data)
 		input_sync (btn->kdev->idev);
 
 		// tickle the cpu into high performance on button presses
-		CPUFREQ_TICKLE();
+		// CPUFREQ_TICKLE(); // TODO -- no CPUFREQ_TICKLE in 3.x kernel
 
 #ifdef CONFIG_GPIO_KEYS_TRIGGER
 		gpio_keys_check_keytrigger_event ( btn->kdev );
