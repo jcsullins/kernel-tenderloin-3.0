@@ -38,6 +38,8 @@
 #define KLOG_MAGIC 0x6b6c6f67 // 'klog'
 #define KLOG_VERSION 1
 
+extern int log_buf_get_len(void);
+
 struct klog_header {
 	uint32_t magic;
 	uint32_t ver;
@@ -62,6 +64,8 @@ struct klog_buffer_header {
 
 static unsigned long klog_phys;
 static unsigned long klog_len;
+
+static int init_done = 0;
 
 static char *klog_buffer;
 
@@ -151,11 +155,7 @@ static void klog_copy_logbuf()
 	if (klog_buf == NULL)
 		return;
 
-	count = 4096;
-
-	/* trim the write if it happens to be huge */
-	if (count > klog_buf->len - 1)
-		count = klog_buf->len - 1;
+	count = log_buf_get_len();
 
 	while (count > 0) {
 		/* write up to the end of the buffer */
@@ -215,7 +215,7 @@ void klog_write_char(const char c)
 
 	spin_lock_irqsave(&klog_lock, flags);
 
-	_klog_write_char(c);
+	if (init_done) _klog_write_char(c);
 
 	spin_unlock_irqrestore(&klog_lock, flags);
 }
@@ -223,6 +223,7 @@ void klog_write_char(const char c)
 static int __init klog_init(void)
 {
 	void *base;
+	unsigned long flags;
 
 	printk("klog_init: entry\n");
 	printk("klog_init: phys buffer is at 0x%lx\n", klog_phys);
@@ -254,7 +255,13 @@ static int __init klog_init(void)
 
 	klog_buf = get_kbuf(klog->current_buf);
 
+	spin_lock_irqsave(&klog_lock, flags);
+
 	klog_copy_logbuf();
+
+	init_done = 1;
+
+	spin_unlock_irqrestore(&klog_lock, flags);
 
 	klog_printf("welcome to klog, buffer at %p, length %d\n", klog_buf, klog_buf->len);
 
