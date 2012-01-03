@@ -95,6 +95,7 @@
 #include "rpm_log.h"
 #include "timer.h"
 #include "gpiomux-8x60.h"
+#include "gpiomux-tenderloin.h"
 #include "rpm_stats.h"
 #include "peripheral-loader.h"
 #include <linux/platform_data/qcom_crypto_device.h>
@@ -10075,6 +10076,197 @@ void msm_fusion_setup_pinctrl(void)
 	}
 }
 
+enum topaz_board_types {
+	TOPAZ_UNKNOWN = 0,
+	TOPAZ_PROTO,
+	TOPAZ_PROTO2,
+	TOPAZ_EVT1,
+	TOPAZ_EVT2,
+	TOPAZ_EVT3,
+	TOPAZ_DVT,
+	TOPAZ_PVT,
+	TOPAZ_3G_PROTO,
+	TOPAZ_3G_PROTO2,
+	TOPAZ_3G_EVT1,
+	TOPAZ_3G_EVT2,
+	TOPAZ_3G_EVT3,
+	TOPAZ_3G_EVT4,
+	TOPAZ_3G_DVT,
+	TOPAZ_3G_PVT
+};
+
+static u32 board_type = TOPAZ_EVT1; /* In case we get a lazy bootloader */
+
+static struct {
+	enum topaz_board_types type;
+	const char *str;
+} topaz_boardtype_tbl[] = {
+	/* WiFi */
+	{TOPAZ_PROTO,    "topaz-Wifi-proto"},
+	{TOPAZ_PROTO2,   "topaz-Wifi-proto2"},
+	{TOPAZ_EVT1,     "topaz-Wifi-evt1"},
+	{TOPAZ_EVT2,     "topaz-Wifi-evt2"},
+	{TOPAZ_EVT3,     "topaz-Wifi-evt3"},
+	{TOPAZ_DVT,      "topaz-Wifi-dvt"},
+	{TOPAZ_PVT,      "topaz-Wifi-pvt"},
+
+	/* 3G */
+	{TOPAZ_3G_PROTO,    "topaz-3G-proto"},
+	{TOPAZ_3G_PROTO2,   "topaz-3G-proto2"},
+	{TOPAZ_3G_EVT1,     "topaz-3G-evt1"},
+	{TOPAZ_3G_EVT2,     "topaz-3G-evt2"},
+	{TOPAZ_3G_EVT3,     "topaz-3G-evt3"},
+	{TOPAZ_3G_EVT4,     "topaz-3G-evt4"},
+	{TOPAZ_3G_DVT,      "topaz-3G-dvt"},
+	{TOPAZ_3G_PVT,      "topaz-3G-pvt"},
+
+	/* TODO: Non-standard board strings, to be removed once all copies of
+	 * bootie in the wild are updated to use the above format */
+
+	/* WiFi */
+	{TOPAZ_PROTO,    "topaz-1stbuild-Wifi"},
+	{TOPAZ_PROTO2,   "topaz-2ndbuild-Wifi"},
+	{TOPAZ_EVT1,     "topaz-3rdbuild-Wifi"},
+	{TOPAZ_EVT2,     "topaz-4thbuild-Wifi"},
+	{TOPAZ_EVT3,     "topaz-5thbuild-Wifi"},
+	{TOPAZ_DVT,      "topaz-6thbuild-Wifi"},
+	{TOPAZ_PVT,      "topaz-7thbuild-Wifi"},
+	{TOPAZ_PVT,      "topaz-pvt-Wifi"},
+
+	/* 3G */
+	{TOPAZ_3G_PROTO,    "topaz-1stbuild-3G"},
+	{TOPAZ_3G_PROTO2,   "topaz-2ndbuild-3G"},
+	{TOPAZ_3G_EVT1,     "topaz-3rdbuild-3G"},
+	{TOPAZ_3G_EVT2,     "topaz-4thbuild-3G"},
+	{TOPAZ_3G_EVT3,     "topaz-5thbuild-3G"},
+	{TOPAZ_3G_DVT,      "topaz-6thbuild-3G"},
+	{TOPAZ_3G_PVT,      "topaz-7thbuild-3G"},
+	{TOPAZ_3G_PVT,      "topaz-pvt-3G"}
+};
+
+static int __init boardtype_setup(char *boardtype_str)
+{
+	int i;
+
+	if (machine_is_tenderloin()) {
+		for (i = 0; i < ARRAY_SIZE(topaz_boardtype_tbl); i++)
+			if (!strcmp(boardtype_str, topaz_boardtype_tbl[i].str))
+				board_type = topaz_boardtype_tbl[i].type;
+	}
+
+	return 0;
+}
+__setup("boardtype=", boardtype_setup);
+
+// Pointer to wifi/3G pin arrays
+int *pin_table = NULL;
+
+static u8 boardtype_is_3g(void) {
+	if (machine_is_tenderloin() && board_type >= TOPAZ_3G_PROTO) {
+		return 1;
+	}
+	return 0;
+}
+
+
+#define TENDERLOIN_CLOCK_FIXUP 0 // TODO
+#if TENDERLOIN_CLOCK_FIXUP
+extern void msm_clock_fixup(uint32_t *fixup_clk_ids, uint32_t fixup_clk_num);
+uint32_t fixup_clk_ids[] = {
+	L_MDP_CLK,
+	L_PIXEL_MDP_CLK,
+	L_PIXEL_LCDC_CLK,
+};
+uint32_t fixup_clk_num = ARRAY_SIZE(fixup_clk_ids);
+#endif
+
+static void __init tenderloin_setup_pin_table(void)
+{
+	if(boardtype_is_3g()) {
+		printk("Choosing tenderloin_pins_3g\n");
+		if (board_type >= TOPAZ_3G_DVT) {
+			pin_table = &tenderloin_pins_3g_dvt[0];
+		} else if (board_type == TOPAZ_3G_EVT4) {
+			pin_table = &tenderloin_pins_3g_evt4[0];
+		} else {
+			pin_table = &tenderloin_pins_3g[0];
+		}
+	}
+	else {
+		printk("Choosing tenderloin_pins_wifi\n");
+		if (board_type >= TOPAZ_DVT) {
+			pin_table = &tenderloin_pins_wifi_dvt[0];
+		} else {
+			pin_table = &tenderloin_pins_wifi[0];
+		}
+	}
+
+#if 0 // TODO
+	// touchpanel
+	xMT1386_board_info[0].irq =  MSM_GPIO_TO_INT(pin_table[MXT1386_TS_PEN_IRQ]);
+	ctp_pins[0].gpio = pin_table[GPIO_CTP_WAKE_PIN];
+
+	// BT
+	bt_pins[0].gpio = pin_table[BT_RST_N_PIN];
+	bt_pins[1].gpio = pin_table[BT_HOST_WAKE_PIN];
+
+	// Lighting
+	lm8502_platform_data.interrupt_gpio = pin_table[LM8502_LIGHTING_INT_IRQ_PIN];
+	lm8502_board_info[0].irq = MSM_GPIO_TO_INT(pin_table[LM8502_LIGHTING_INT_IRQ_PIN]);
+
+	// Charging
+#ifdef CONFIG_CHARGER_MAX8903B
+	max8903b_charger_pdata.IUSB_in = pin_table[MAX8903B_GPIO_USB_CHG_MODE_PIN];
+	max8903b_charger_pdata.DOK_N_out = pin_table[MAX8903B_GPIO_DC_OK_PIN];
+#endif
+
+	// GPIO keys
+	board_gpio_keys_buttons[0].gpio = pin_table[VOL_UP_GPIO_PIN];
+	board_gpio_keys_buttons[1].gpio = pin_table[VOL_DN_GPIO_PIN];
+
+	// A6
+	tenderloin_a6_0_platform_data.pwr_gpio = pin_table[TENDERLOIN_A6_0_MSM_IRQ_PIN];
+	tenderloin_a6_0_platform_data.sbw_tck_gpio = pin_table[TENDERLOIN_A6_0_TCK_PIN];
+	tenderloin_a6_0_platform_data.sbw_tdio_gpio = pin_table[TENDERLOIN_A6_0_TDIO_PIN];
+	tenderloin_a6_0_platform_data.sbw_wkup_gpio = pin_table[TENDERLOIN_A6_0_WAKEUP_PIN];
+
+	tenderloin_a6_1_platform_data.pwr_gpio = pin_table[TENDERLOIN_A6_1_MSM_IRQ_PIN];
+	tenderloin_a6_1_platform_data.sbw_tck_gpio = pin_table[TENDERLOIN_A6_1_TCK_PIN];
+	tenderloin_a6_1_platform_data.sbw_tdio_gpio = pin_table[TENDERLOIN_A6_1_TDIO_PIN];
+	tenderloin_a6_1_platform_data.sbw_wkup_gpio = pin_table[TENDERLOIN_A6_1_WAKEUP_PIN];
+
+	if(boardtype_is_3g()) {
+		tenderloin_a6_0_platform_data.sbw_init_gpio_config = a6_0_sbw_gpio_config_3g;
+		tenderloin_a6_0_platform_data.sbw_init_gpio_config_size = ARRAY_SIZE(a6_0_sbw_gpio_config_3g);
+		tenderloin_a6_0_platform_data.sbw_deinit_gpio_config = a6_0_sbw_gpio_config_3g;
+		tenderloin_a6_0_platform_data.sbw_deinit_gpio_config_size = ARRAY_SIZE(a6_0_sbw_gpio_config_3g);
+
+		tenderloin_a6_1_platform_data.sbw_init_gpio_config = a6_1_sbw_gpio_config_3g;
+		tenderloin_a6_1_platform_data.sbw_init_gpio_config_size = ARRAY_SIZE(a6_1_sbw_gpio_config_3g);
+		tenderloin_a6_1_platform_data.sbw_deinit_gpio_config = a6_1_sbw_gpio_config_3g;
+		tenderloin_a6_1_platform_data.sbw_deinit_gpio_config_size = ARRAY_SIZE(a6_1_sbw_gpio_config_3g);
+
+		// A6 irq
+		/* 3G EVT4 boards use the same A6 gpios as DVT */
+		if (board_type >= TOPAZ_3G_EVT4) {
+			a6_0_config_data_3g [0] = TENDERLOIN_A6_0_MSM_IRQ_3G_DVT;
+			a6_1_config_data_3g [0] = TENDERLOIN_A6_1_MSM_IRQ_3G_DVT;
+			a6_0_sbw_gpio_config_3g [0] = TENDERLOIN_A6_0_TCK_3G_DVT;
+		}
+
+	} else {
+		// A6 irq
+		if (board_type >= TOPAZ_DVT) {
+			a6_0_config_data [0] = TENDERLOIN_A6_0_MSM_IRQ_DVT;
+			a6_1_config_data [0] = TENDERLOIN_A6_1_MSM_IRQ_DVT;
+		}
+	}
+
+	a6_boardtype(pin_table);
+#endif
+}
+
+
 struct msm_board_data {
 	struct msm_gpiomux_configs *gpiomux_cfgs;
 };
@@ -10185,10 +10377,16 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 	 */
 	regulator_suppress_info_printing();
 
+	if (machine_is_tenderloin()) {
+		tenderloin_setup_pin_table();
+	}
+
 	/* Initialize regulators needed for clock_init. */
 	platform_add_devices(early_regulators, ARRAY_SIZE(early_regulators));
 
 	msm_clock_init(&msm8x60_clock_init_data);
+
+	/* TODO msm_clock_fixup() */
 
 	/* Buses need to be initialized before early-device registration
 	 * to get the platform data for fabrics.
@@ -10210,7 +10408,31 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 			machine_is_msm8x60_dragon())
 		msm8x60_init_ebi2();
 	msm8x60_init_tlmm();
-	msm8x60_init_gpiomux(board_data->gpiomux_cfgs);
+	if (!machine_is_tenderloin()) {
+		msm8x60_init_gpiomux(board_data->gpiomux_cfgs);
+	}
+	else {
+#if 0 // TODO
+		if(boardtype_is_3g()) {
+			/* 3G EVT4 boards use the same gpiomux cfg as DVT */
+			if (board_type >= TOPAZ_3G_EVT4) {
+				msm8x60_init_gpiomux(tenderloin_3g_dvt_gpiomux_cfgs);
+			} else {
+				msm8x60_init_gpiomux(tenderloin_3g_gpiomux_cfgs);
+			}
+			mpu3050_i2c_board_info[0].irq = MSM_GPIO_TO_INT(TENDERLOIN_GYRO_INT_3G);
+
+		} else {
+			if (board_type >= TOPAZ_DVT) {
+				msm8x60_init_gpiomux(tenderloin_dvt_gpiomux_cfgs);
+			} else {
+				msm8x60_init_gpiomux(tenderloin_gpiomux_cfgs);
+			}
+		}
+#else
+		msm8x60_init_gpiomux(tenderloin_gpiomux_cfgs);
+#endif
+	}
 	msm8x60_init_uart12dm();
 	msm8x60_init_mmc();
 
