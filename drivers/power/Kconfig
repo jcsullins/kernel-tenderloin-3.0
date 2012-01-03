@@ -219,6 +219,12 @@ config CHARGER_MAX8903
 	  pins based on the status of charger connections with interrupt
 	  handlers.
 
+config CHARGER_MAX8903B
+	tristate "MAXIM 8903B Charger (HP/Palm)"
+	default n
+	help
+	  Say Y to enable support for the MAX8903B charger.
+
 config CHARGER_TWL4030
 	tristate "OMAP TWL4030 BCI charger driver"
 	depends on TWL4030_CORE
@@ -344,5 +350,7 @@ config PM8921_BMS
 	depends on MFD_PM8921_CORE
 	help
 	  Say Y here to enable support for pm8921 chip bms subdevice
+
+
 
 endif # POWER_SUPPLY
