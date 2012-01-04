@@ -1645,9 +1645,11 @@ static int config_gpio_table(enum msm_cam_stat stat)
 	return rc;
 }
 
+#ifdef CONFIG_IMX074
 static struct msm_camera_sensor_platform_info sensor_board_info = {
 	.mount_angle = 0
 };
+#endif
 
 /*external regulator VREG_5V*/
 static struct regulator *reg_flash_5V;
@@ -5462,6 +5464,7 @@ static void __init msm8x60_reserve(void)
 #define EXT_CHG_VALID_MPP 10
 #define EXT_CHG_VALID_MPP_2 11
 
+#ifdef CONFIG_ISL9519_CHARGER
 static struct pm8xxx_mpp_init_info isl_mpp[] = {
 	PM8058_MPP_INIT(EXT_CHG_VALID_MPP, D_INPUT,
 		PM8058_MPP_DIG_LEVEL_S3, DIN_TO_INT),
@@ -5469,7 +5472,6 @@ static struct pm8xxx_mpp_init_info isl_mpp[] = {
 		PM8058_MPP_DIG_LEVEL_S3, BI_PULLUP_10KOHM),
 };
 
-#ifdef CONFIG_ISL9519_CHARGER
 static int isl_detection_setup(void)
 {
 	int ret = 0, i;
