@@ -3977,3 +3977,9 @@ struct clock_init_data msm8x60_clock_init_data __initdata = {
 	.init = msm8660_clock_init,
 	.late_init = msm8660_clock_late_init,
 };
+
+void tenderloin_clock_fixup(void) {
+	clk_enable(&mdp_clk.c);
+	clk_enable(&pixel_mdp_clk.c);
+	clk_enable(&pixel_lcdc_clk.c);
+}
