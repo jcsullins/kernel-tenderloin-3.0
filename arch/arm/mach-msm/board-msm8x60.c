@@ -2620,7 +2620,7 @@ static void __init msm8x60_init_dsps(void)
 #elif defined(CONFIG_FB_MSM_TVOUT)
 #define MSM_FB_EXT_BUF_SIZE  (720 * 576 * 2 * 2) /* 2 bpp x 2 pages */
 #else
-#define MSM_FB_EXT_BUFT_SIZE	0
+#define MSM_FB_EXT_BUF_SIZE	0
 #endif
 
 #ifdef CONFIG_FB_MSM_OVERLAY_WRITEBACK
