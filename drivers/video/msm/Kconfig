@@ -200,6 +200,11 @@ config FB_MSM_LCDC_ST15_PANEL
     ---help---
       Support for ST1.5 WXGA (1366x768) panel
 
+config FB_MSM_LCDC_LG_XGA
+	bool
+	select FB_MSM_LCDC_PANEL
+	default n
+
 config FB_MSM_LCDC_PRISM_WVGA
 	bool
 	select FB_MSM_LCDC_PANEL
@@ -427,6 +432,13 @@ config FB_MSM_LVDS_CHIMEI_WXGA_PANEL
         ---help---
           Support for LVDS Chimei WXGA(1366x768) panel
 
+config FB_MSM_LCDC_LG_XGA_PANEL
+	depends on FB_MSM_LCDC_HW
+    bool "LCDC LG XGA Panel"
+	select FB_MSM_LCDC_LG_XGA
+    ---help---
+      Support for LCDC LG XGA PANEL
+
 config FB_MSM_TRY_MDDI_CATCH_LCDC_PRISM
 	depends on FB_MSM_LCDC_HW
 	bool "MDDI Panel Auto Detect + LCDC Prism WVGA"
@@ -472,6 +484,7 @@ config FB_MSM_LCDC_PANEL_AUTO_DETECT
 	select FB_MSM_LCDC_AUO_WVGA
 	select FB_MSM_LCDC_NT35582_WVGA
 	select FB_MSM_LCDC_SAMSUNG_OLED_PT
+	select FB_MSM_LCDC_LG_XGA
 	---help---
 	  Support for LCDC panel auto detect
 
