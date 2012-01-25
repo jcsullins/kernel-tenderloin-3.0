@@ -2217,9 +2217,11 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 			mdp4_overlay_status_write(MDP4_OVERLAY_TYPE_SET, true);
 	}
 
+#ifdef CONFIG_FB_MSM_DTV
 	if (ctrl->panel_mode & MDP4_PANEL_DTV &&
 	    pipe->mixer_num == MDP4_MIXER1)
 		mdp4_overlay_dtv_set(mfd, pipe);
+#endif
 
 	if (new_perf_level != perf_level) {
 		u32 old_level = new_perf_level;
@@ -2241,10 +2243,13 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 				mdp4_mddi_dma_busy_wait(mfd);
 				mdp4_set_perf_level();
 			}
-		} else {
+		}
+#ifdef CONFIG_FB_MSM_DTV
+		else {
 			if (ctrl->panel_mode & MDP4_PANEL_DTV)
 				mdp4_overlay_dtv_ov_done_push(mfd, pipe);
 		}
+#endif
 	}
 	mutex_unlock(&mfd->dma->ov_mutex);
 
@@ -2324,10 +2329,13 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 			mdp4_overlay_update_blt_mode(mfd);
 			if (!mfd->use_ov0_blt)
 				mdp4_free_writeback_buf(mfd, MDP4_MIXER0);
-		} else {	/* mixer1, DTV, ATV */
+		}
+#ifdef CONFIG_FB_MSM_DTV
+		else {	/* mixer1, DTV, ATV */
 			if (ctrl->panel_mode & MDP4_PANEL_DTV)
 				mdp4_overlay_dtv_unset(mfd, pipe);
 		}
+#endif
 	}
 
 	/* Reset any HSIC settings to default */
@@ -2402,7 +2410,9 @@ int mdp4_overlay_play_wait(struct fb_info *info, struct msmfb_overlay_data *req)
 
 	mdp4_mixer_stage_commit(pipe->mixer_num);
 
+#ifdef CONFIG_FB_MSM_DTV
 	mdp4_overlay_dtv_wait_for_ov(mfd, pipe);
+#endif
 
 	mutex_unlock(&mfd->dma->ov_mutex);
 	return 0;
@@ -2568,8 +2578,10 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 	} else if (pipe->mixer_num == MDP4_MIXER1) {
 		ctrl->mixer1_played++;
 		/* enternal interface */
+#ifdef CONFIG_FB_MSM_DTV
 		if (ctrl->panel_mode & MDP4_PANEL_DTV)
 			mdp4_overlay_dtv_ov_done_push(mfd, pipe);
+#endif
 	} else {
 
 		/* primary interface */
