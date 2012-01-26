@@ -10364,11 +10364,13 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 	else
 		pm8058_platform_data.keypad_pdata = &ffa_keypad_data;
 
+#ifdef CONFIG_WEBCAM_OV9726
 	/* Specify reset pin for OV9726 */
 	if (machine_is_msm8x60_dragon()) {
 		msm_camera_sensor_ov9726_data.sensor_reset = 62;
 		ov9726_sensor_8660_info.mount_angle = 270;
 	}
+#endif
 
 #ifdef CONFIG_BATTERY_MSM8X60
 	if (machine_is_msm8x60_surf() || machine_is_msm8x60_ffa() ||
