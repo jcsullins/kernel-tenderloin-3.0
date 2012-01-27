@@ -7074,6 +7074,7 @@ static struct i2c_board_info msm_marimba_board_info[] = {
 #define I2C_SIM  (1 << 3)
 #define I2C_FLUID (1 << 4)
 #define I2C_DRAGON (1 << 5)
+#define I2C_TENDERLOIN (1 << 6)
 
 struct i2c_registry {
 	u8                     machs;
@@ -7083,6 +7084,7 @@ struct i2c_registry {
 };
 
 static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
+	// TODO ADD TENDERLOIN
 #if defined(CONFIG_GPIO_SX150X) || defined(CONFIG_GPIO_SX150X_MODULE)
 	{
 		I2C_SURF | I2C_FFA | I2C_DRAGON,
@@ -7276,6 +7278,8 @@ static void register_i2c_devices(void)
 		mach_mask = I2C_FLUID;
 	else if (machine_is_msm8x60_dragon())
 		mach_mask = I2C_DRAGON;
+	else if (machine_is_tenderloin())
+		mach_mask = I2C_TENDERLOIN;
 	else
 		pr_err("unmatched machine ID in register_i2c_devices\n");
 
