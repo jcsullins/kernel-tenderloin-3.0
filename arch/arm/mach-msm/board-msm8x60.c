@@ -2906,6 +2906,8 @@ static struct platform_device android_pmem_smipool_device = {
 #endif
 
 #define GPIO_DONGLE_PWR_EN 258
+
+#if defined(CONFIG_GPIO_SX150X) || defined(CONFIG_GPIO_SX150X_MODULE)
 static void setup_display_power(void);
 static int lcdc_vga_enabled;
 static int vga_enable_request(int enable)
@@ -2918,6 +2920,12 @@ static int vga_enable_request(int enable)
 
 	return 0;
 }
+#else
+static int vga_enable_request(int enable)
+{
+	return 0;
+}
+#endif
 
 #define GPIO_BACKLIGHT_PWM0 0
 #define GPIO_BACKLIGHT_PWM1 1
@@ -4414,6 +4422,7 @@ cfg_gpio_low_power(struct sx150x_low_power_cfg *cfgs, unsigned nelems)
 	}
 }
 
+#if defined(CONFIG_GPIO_SX150X) || defined(CONFIG_GPIO_SX150X_MODULE)
 static int __init cfg_sx150xs_low_power(void)
 {
 	cfg_gpio_low_power(common_sx150x_lp_cfgs,
@@ -4424,6 +4433,7 @@ static int __init cfg_sx150xs_low_power(void)
 	return 0;
 }
 module_init(cfg_sx150xs_low_power);
+#endif
 
 #ifdef CONFIG_I2C
 static struct i2c_board_info core_expander_i2c_info[] __initdata = {
@@ -6064,6 +6074,7 @@ static struct pmic8058_othc_config_pdata othc_config_pdata_2 = {
 };
 
 
+#if defined(CONFIG_PMIC8058_OTHC) || defined(CONFIG_PMIC8058_OTHC_MODULE)
 static void __init msm8x60_init_pm8058_othc(void)
 {
 	int i;
@@ -6100,7 +6111,7 @@ static void __init msm8x60_init_pm8058_othc(void)
 		}
 	}
 }
-
+#endif
 
 static int pm8058_pwm_config(struct pwm_device *pwm, int ch, int on)
 {
