@@ -10620,7 +10620,7 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 		pm8058_platform_data.leds_pdata = &pm8058_fluid_flash_leds_data;
 	else if (machine_is_msm8x60_dragon())
 		pm8058_platform_data.leds_pdata = &pm8058_dragon_leds_data;
-	else
+	else if (!machine_is_tenderloin())
 		pm8058_platform_data.leds_pdata = &pm8058_flash_leds_data;
 
 	if (machine_is_msm8x60_ffa() || machine_is_msm8x60_fusn_ffa() ||
