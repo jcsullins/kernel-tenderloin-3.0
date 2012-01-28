@@ -13,6 +13,7 @@
 #include <mach/irqs.h>
 #include <asm/mach-types.h>
 #include <mach/gpiomux.h>
+#include <linux/gpio.h>
 #include "gpiomux-8x60.h"
 
 static struct gpiomux_setting console_uart = {
@@ -1694,7 +1695,7 @@ static struct msm_gpiomux_config msm8x60_lcdc_configs[] __initdata = {
 	},
 };
 
-static struct msm_gpiomux_config tenderloin_lcdc_configs[] __initdata = {
+static struct msm_gpiomux_config tenderloin_lcdc_configs[] = {
 	/* lcdc_pclk */
 	{
 		.gpio = 0,
@@ -2243,15 +2244,74 @@ tenderloin_gpiomux_cfgs[] __initdata = {
 	{NULL, 0},
 };
 
+#if defined(CONFIG_MACH_TENDERLOIN)
+/* HP_Hover[20101105][Workaround]Add special gpio request interface here for lcdc,
+ * to keep the related gpio's reference counter balenced, since we set the lcdc
+ * active when bootup(ref=1).
+ */
+int lcdc_gpio_request(bool on)
+{
+	int n, ret=0;
+	static bool first_time = true;
+
+	for (n = 0; n < ARRAY_SIZE(tenderloin_lcdc_configs); n++) {
+		if (on) {
+			ret = gpio_request(tenderloin_lcdc_configs[n].gpio, "LCDC_GPIO");
+			if (unlikely(ret)) {
+				printk("%s not able to get gpio\n", __func__);
+				break;
+			}
+			if (first_time) {
+				msm_gpiomux_put(tenderloin_lcdc_configs[n].gpio);
+			}
+		} else {
+			gpio_free(tenderloin_lcdc_configs[n].gpio);
+		}
+	}
+
+	if (ret) {
+		for (n--; n >= 0; n--)
+			gpio_free(tenderloin_lcdc_configs[n].gpio);
+	}
+	else {
+		first_time = false;
+	}
+	return ret;
+
+}
+
+static int lcdc_gpio_get(void)
+{
+	int n,ret=0;
+	for (n = 0; n < ARRAY_SIZE(tenderloin_lcdc_configs); n++) {
+		ret = msm_gpiomux_get(tenderloin_lcdc_configs[n].gpio);
+		if(unlikely(ret)){
+			printk("%s not able to get gpio\n", __func__);
+			break;
+		}
+	}
+	return ret;
+}
+#endif
+
+
 void __init msm8x60_init_gpiomux(struct msm_gpiomux_configs *cfgs)
 {
 	int rc;
 
 	rc = msm_gpiomux_init(NR_GPIO_IRQS);
 	if (rc) {
-		pr_err("%s failure: %d\n", __func__, rc);
+		pr_err("%s failure: msm_gpiomux_init: %d\n", __func__, rc);
 		return;
 	}
+
+#if defined(CONFIG_MACH_TENDERLOIN)
+	rc = lcdc_gpio_get();
+	if (rc) {
+		pr_err("%s failure: lcdc_gpio_get: %d\n", __func__, rc);
+		return;
+	}
+#endif
 
 	while (cfgs->cfg) {
 		msm_gpiomux_install(cfgs->cfg, cfgs->ncfg);
