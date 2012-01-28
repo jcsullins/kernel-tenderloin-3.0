@@ -5656,7 +5656,7 @@ static int tenderloin_pm8058_gpios_init(void)
 	struct pm8058_gpio_cfg gpio_cfgs[] = {
 		{
             /*LCD BL PWM, PMIC GPIO24 in schematic*/
-			23,
+			PM8058_GPIO_PM_TO_SYS(23),
 			{
 				.direction      = PM_GPIO_DIR_OUT,
 				.pull           = PM_GPIO_PULL_NO,
@@ -5667,7 +5667,7 @@ static int tenderloin_pm8058_gpios_init(void)
 		},
 		{
             /*LCD BL ENABLE, PMIC GPIO25 in schematic*/
-			24,
+			PM8058_GPIO_PM_TO_SYS(24),
 			{
 				.direction      = PM_GPIO_DIR_OUT,
 				.pull           = PM_GPIO_PULL_NO,
@@ -5679,7 +5679,7 @@ static int tenderloin_pm8058_gpios_init(void)
 		},
 		{
             /*UIM CLK, PMIC GPIO29 in schematic*/
-			28,
+			PM8058_GPIO_PM_TO_SYS(28),
 			{
 				.direction      = PM_GPIO_DIR_IN,
 				.pull           = PM_GPIO_PULL_NO,
@@ -5690,7 +5690,7 @@ static int tenderloin_pm8058_gpios_init(void)
 		},
 		{
             /*UIM CLK, PMIC GPIO30 in schematic*/
-			29,
+			PM8058_GPIO_PM_TO_SYS(29),
 			{
 				.direction      = PM_GPIO_DIR_OUT,
 				.pull           = PM_GPIO_PULL_NO,
@@ -5701,7 +5701,7 @@ static int tenderloin_pm8058_gpios_init(void)
 		},
 		{
             /*UIM Reset, PMIC GPIO32 in schematic*/
-			31,
+			PM8058_GPIO_PM_TO_SYS(31),
 			{
 				.direction      = PM_GPIO_DIR_OUT,
 				.pull           = PM_GPIO_PULL_NO,
@@ -5712,7 +5712,7 @@ static int tenderloin_pm8058_gpios_init(void)
 		},
 		{
             /*Proximity reset, PMIC GPIO36 in schematic*/
-			35,
+			PM8058_GPIO_PM_TO_SYS(35),
 			{
 				.direction      = PM_GPIO_DIR_OUT,
 				.pull           = PM_GPIO_PULL_NO,
@@ -5723,7 +5723,7 @@ static int tenderloin_pm8058_gpios_init(void)
 		},
 		{
             /*USB ID, PMIC GPIO37 in schematic*/
-			36,
+			PM8058_GPIO_PM_TO_SYS(36),
 			{
 				.direction      = PM_GPIO_DIR_IN,
 				.pull           = PM_GPIO_PULL_NO,
@@ -5734,7 +5734,7 @@ static int tenderloin_pm8058_gpios_init(void)
 		},
 		{
             /*SSBI PMIC CLK, PMIC GPIO39 in schematic*/
-			38,
+			PM8058_GPIO_PM_TO_SYS(38),
 			{
 				.direction      = PM_GPIO_DIR_OUT,
 				.pull           = PM_GPIO_PULL_NO,
@@ -5745,7 +5745,7 @@ static int tenderloin_pm8058_gpios_init(void)
 		},
 		{
             /*Proximity interrupt, PMIC GPIO40 in schematic*/
-			39,
+			PM8058_GPIO_PM_TO_SYS(39),
 			{
 				.direction      = PM_GPIO_DIR_IN,
 				.pull           = PM_GPIO_PULL_NO,
