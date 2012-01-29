@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
+	/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -136,6 +136,7 @@ void tenderloin_clock_fixup(void);
 #define LCDC_SAMSUNG_SPI_DEVICE_NAME	"lcdc_samsung_ams367pe02"
 #define LCDC_AUO_SPI_DEVICE_NAME		"lcdc_auo_nt35582"
 #define LCDC_NT35582_PANEL_NAME			"lcdc_nt35582_wvga"
+#define LCDC_LG_XGA_PANEL_NAME			"lcdc_lg_xga"
 
 #define PANEL_NAME_MAX_LEN	30
 #define MIPI_CMD_NOVATEK_QHD_PANEL_NAME	"mipi_cmd_novatek_qhd"
@@ -2553,7 +2554,11 @@ static struct platform_device msm_batt_device = {
 /* VGA = 1440 x 900 x 4(bpp) x 2(pages)
    prim = 1024 x 600 x 4(bpp) x 2(pages)
    This is the difference. */
+#ifdef  CONFIG_FB_MSM_LCDC_LG_XGA
+#define MSM_FB_DSUB_PMEM_ADDER (0x9E3400-0x4B0000)
+#else
 #define MSM_FB_DSUB_PMEM_ADDER (0xA32000-0x4B0000)
+#endif
 #else
 #define MSM_FB_DSUB_PMEM_ADDER (0)
 #endif
@@ -2609,10 +2614,18 @@ static void __init msm8x60_init_dsps(void)
 }
 #endif /* CONFIG_MSM_DSPS */
 
+#ifdef CONFIG_FB_MSM_LCDC_LG_XGA
+#ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
+#define MSM_FB_PRIM_BUF_SIZE (1024 * 768 * 4 * 3) /* 4 bpp x 3 pages */
+#else
+#define MSM_FB_PRIM_BUF_SIZE (1024 * 768 * 4 * 2) /* 4 bpp x 2 pages */
+#endif
+#else
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
 #define MSM_FB_PRIM_BUF_SIZE (1024 * 600 * 4 * 3) /* 4 bpp x 3 pages */
 #else
 #define MSM_FB_PRIM_BUF_SIZE (1024 * 600 * 4 * 2) /* 4 bpp x 2 pages */
+#endif
 #endif
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
@@ -2625,7 +2638,11 @@ static void __init msm8x60_init_dsps(void)
 
 #ifdef CONFIG_FB_MSM_OVERLAY_WRITEBACK
 /* width x height x 3 bpp x 2 frame buffer */
+#ifdef CONFIG_FB_MSM_LCDC_LG_XGA
+#define MSM_FB_WRITEBACK_SIZE (1024 * 768 * 3 * 2)
+#else
 #define MSM_FB_WRITEBACK_SIZE (1024 * 600 * 3 * 2)
+#endif
 #define MSM_FB_WRITEBACK_OFFSET  \
 		(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE)
 #else
@@ -2677,6 +2694,15 @@ static int writeback_offset(void)
 #else
 #define MSM_ION_HEAP_NUM	2
 #endif
+
+/** allow the framebuffer's address to be passed from the bootloader on the command line */
+static unsigned long fb_phys = 0;
+static int __init fb_args(char *str)
+{
+        fb_phys = memparse(str, NULL);
+        return 0;
+}
+early_param("fb", fb_args);
 
 static unsigned fb_size;
 static int __init fb_size_setup(char *p)
@@ -2751,6 +2777,13 @@ static int msm_fb_detect_panel(const char *name)
 	} else if machine_is_msm8x60_dragon() {
 	    if (!strncmp(name, LCDC_NT35582_PANEL_NAME,
 				strnlen(LCDC_NT35582_PANEL_NAME,
+					PANEL_NAME_MAX_LEN)))
+			return 0;
+#endif
+#ifdef CONFIG_FB_MSM_LCDC_LG_XGA
+	} else if machine_is_tenderloin() {
+	    if (!strncmp(name, LCDC_LG_XGA_PANEL_NAME,
+				strnlen(LCDC_LG_XGA_PANEL_NAME,
 					PANEL_NAME_MAX_LEN)))
 			return 0;
 #endif
@@ -2932,10 +2965,42 @@ static int vga_enable_request(int enable)
 
 static int pmic_backlight_gpio[2]
 	= { GPIO_BACKLIGHT_PWM0, GPIO_BACKLIGHT_PWM1 };
+
 static struct msm_panel_common_pdata lcdc_samsung_panel_data = {
 	.gpio_num = pmic_backlight_gpio, /* two LPG CHANNELS for backlight */
 	.vga_switch = vga_enable_request,
 };
+
+#ifdef CONFIG_FB_MSM_LCDC_LG_XGA
+/* PMIC8058 GPIO offset starts at 0 */
+#define GPIO_BACKLIGHT_EN  PM8058_GPIO_PM_TO_SYS(25-1)
+static bool delay_bl_power_up = true;
+
+int set_pmic_backlight(int bl_level)
+{
+	if(delay_bl_power_up)
+	{
+		delay_bl_power_up = false;
+		msleep(200);
+		gpio_set_value_cansleep(GPIO_BACKLIGHT_EN, 1);
+		pr_info("[%s] backlight enabled\n",__func__);
+	}
+	return 0;
+}
+
+static struct msm_panel_common_pdata lcdc_common_panel_data = {
+	.gpio_num = pmic_backlight_gpio, /* two LPG CHANNELS for backlight */
+	.pmic_backlight = set_pmic_backlight,
+};
+
+static struct platform_device lcdc_lg_panel_device = {
+	.name = "lcdc_lg_xga",
+	.id = 0,
+	.dev = {
+		.platform_data = &lcdc_common_panel_data,
+	}
+};
+#endif
 
 static struct platform_device lcdc_samsung_panel_device = {
 	.name = LCDC_SAMSUNG_WSVGA_PANEL_NAME,
@@ -3127,11 +3192,19 @@ static void __init msm8x60_allocate_memory_regions(void)
 	unsigned long size;
 
 	size = MSM_FB_SIZE;
-	addr = alloc_bootmem_align(size, 0x1000);
-	msm_fb_resources[0].start = __pa(addr);
-	msm_fb_resources[0].end = msm_fb_resources[0].start + size - 1;
-	pr_info("allocating %lu bytes at %p (%lx physical) for fb\n",
+	if(fb_phys) {
+		addr = (void *)fb_phys;
+		msm_fb_resources[0].start = (unsigned long)addr;
+		pr_info("passing from bootie %lu bytes at %lx physical for fb\n",
+                        size, fb_phys);
+	} else {
+		addr = alloc_bootmem(size);
+		addr = alloc_bootmem_align(size, 0x1000);
+		msm_fb_resources[0].start = __pa(addr);
+		pr_info("allocating %lu bytes at %p (%lx physical) for fb\n",
 		size, addr, __pa(addr));
+	}
+	msm_fb_resources[0].end = msm_fb_resources[0].start + size - 1;
 
 }
 
@@ -4064,8 +4137,8 @@ static struct rpm_regulator_init_data rpm_regulator_init_data[] = {
 	RPM_LDO(PM8058_L7,  0, 1, 0, 1800000, 1800000,  LDO50HMIN),
 	RPM_LDO(PM8058_L8,  0, 1, 0, 2900000, 3050000, LDO300HMIN),
 	RPM_LDO(PM8058_L9,  0, 1, 0, 1800000, 1800000, LDO300HMIN),
-	RPM_LDO(PM8058_L10, 0, 1, 0, 2600000, 2600000, LDO300HMIN),
-	RPM_LDO(PM8058_L11, 0, 1, 0, 1500000, 1500000, LDO150HMIN),
+	RPM_LDO(PM8058_L10, 0, 1, 0, 3050000, 3050000, LDO300HMIN),
+	RPM_LDO(PM8058_L11, 0, 1, 0, 2850000, 2850000, LDO150HMIN),
 	RPM_LDO(PM8058_L12, 0, 1, 0, 2900000, 2900000, LDO150HMIN),
 	RPM_LDO(PM8058_L13, 0, 1, 0, 2050000, 2050000, LDO300HMIN),
 	RPM_LDO(PM8058_L14, 0, 0, 0, 2850000, 2850000, LDO300HMIN),
@@ -4073,7 +4146,7 @@ static struct rpm_regulator_init_data rpm_regulator_init_data[] = {
 	RPM_LDO(PM8058_L16, 1, 1, 0, 1800000, 1800000, LDO300HMIN),
 	RPM_LDO(PM8058_L17, 0, 1, 0, 2600000, 2600000, LDO150HMIN),
 	RPM_LDO(PM8058_L18, 0, 1, 0, 2200000, 2200000, LDO150HMIN),
-	RPM_LDO(PM8058_L19, 0, 1, 0, 2500000, 2500000, LDO150HMIN),
+	RPM_LDO(PM8058_L19, 0, 1, 0, 1800000, 1800000, LDO150HMIN),
 	RPM_LDO(PM8058_L20, 0, 1, 0, 1800000, 1800000, LDO150HMIN),
 	RPM_LDO(PM8058_L21, 1, 1, 0, 1200000, 1200000, LDO150HMIN),
 	RPM_LDO(PM8058_L22, 0, 1, 0, 1150000, 1150000, LDO300HMIN),
@@ -7293,6 +7366,15 @@ static void register_i2c_devices(void)
 #endif
 }
 
+static void register_lcdc_panel(void)
+{
+	if (machine_is_tenderloin()) {
+#ifdef CONFIG_FB_MSM_LCDC_LG_XGA
+		platform_device_register(&lcdc_lg_panel_device);
+#endif
+	}
+}
+
 static void __init msm8x60_init_uart12dm(void)
 {
 #if !defined(CONFIG_USB_PEHCI_HCD) && !defined(CONFIG_USB_PEHCI_HCD_MODULE)
@@ -8859,6 +8941,155 @@ static void lcdc_samsung_panel_power(int on)
 	mipi_dsi_panel_power(0); /* set 8058_ldo0 to LPM */
 }
 
+
+#if defined(CONFIG_FB_MSM_LCDC_LG_XGA)
+#define GPIO_LCD_PWR_EN  63
+#define GPIO_LVDS_SHDN_N 62
+extern int lcdc_gpio_request(bool on);
+
+#define _GET_REGULATOR(var, name)   \
+    do {              \
+        var = regulator_get(NULL, name);            \
+        if (IS_ERR(var)) {                  \
+            panic("'%s' regulator not found, rc=%ld\n",    \
+                name, IS_ERR(var));         \
+        }                           \
+    } while (0)
+
+static struct regulator *votg_l10 = NULL;
+#ifdef USE_REGULATOR_VDD5V
+static struct regulator *votg_vdd5v = NULL;
+#endif
+
+static int lcdc_common_panel_power(int on)
+{
+	int rc;
+
+	/* VDD_LVDS_3.3V*/
+	if(!votg_l10)
+		_GET_REGULATOR(votg_l10, "8058_l10");
+
+	/* Due to hardware change, it will not use GPIO102 as 5V boost Enable since EVT1*/
+	#ifdef USE_REGULATOR_VDD5V
+	if (board_is_topaz_wifi() && board_type < TOPAZ_EVT1)
+	{
+		/* VDD_BACKLIGHT_5.0V*/
+		if(!votg_vdd5v)
+			_GET_REGULATOR(votg_vdd5v, "vdd50_boost");
+	}
+	#endif
+
+	if (on)
+	{
+		/* VDD_LVDS_3.3V ENABLE*/
+		rc = regulator_set_voltage(votg_l10, 3050000, 3050000);
+		if(rc)
+		{
+			pr_err("%s: Unable to set regulator voltage:"
+					" votg_l10\n", __func__);
+			return rc;
+		}
+
+		rc = regulator_enable(votg_l10);
+		if(rc)
+		{
+			pr_err("%s: Unable to enable the regulator:"
+					" votg_l10\n", __func__);
+			return rc;
+		}
+
+		/* Due to hardware change, it will not use GPIO102 as 5V boost Enable since EVT1*/
+		#ifdef USE_REGULATOR_VDD5V
+		if (board_is_topaz_wifi() && board_type < TOPAZ_EVT1)
+		{
+			/* VDD_BACKLIGHT_5.0V ENABLE*/
+			rc = regulator_enable(votg_vdd5v);
+			if(rc)
+			{
+				pr_err("%s: Unable to enable the regulator:"
+						" votg_vdd5v\n", __func__);
+				return rc;
+			}
+		}
+		#endif
+
+		/* LVDS_SHDN_N*/
+		rc = gpio_request(GPIO_LVDS_SHDN_N,"LVDS_SHDN_N");
+		if (rc)
+		{
+			pr_err("%s: LVDS gpio %d request"
+						"failed\n", __func__,
+						 GPIO_LVDS_SHDN_N);
+			return rc;
+		}
+
+		/* LCD_PWR_EN */
+		rc = gpio_request(GPIO_LCD_PWR_EN, "LCD_PWR_EN");
+		if (rc)
+		{
+			pr_err("%s: LCD Power gpio %d request"
+						"failed\n", __func__,
+						 GPIO_LCD_PWR_EN);
+			gpio_free(GPIO_LVDS_SHDN_N);
+			return rc;
+		}
+
+		/* BACKLIGHT */
+		rc = gpio_request(GPIO_BACKLIGHT_EN, "BACKLIGHT_EN");
+		if (rc)
+		{
+			pr_err("%s: BACKLIGHT gpio %d request"
+						"failed\n", __func__,
+						 GPIO_BACKLIGHT_EN);
+			gpio_free(GPIO_LVDS_SHDN_N);
+			gpio_free(GPIO_LCD_PWR_EN);
+			return rc;
+		}
+
+		gpio_set_value_cansleep(GPIO_LVDS_SHDN_N, 1);
+		gpio_set_value_cansleep(GPIO_LCD_PWR_EN, 1);
+		mdelay(2);
+		// enable backlight later
+		delay_bl_power_up = true;
+	}
+	else
+	{
+		rc = regulator_disable(votg_l10);
+		if(rc)
+		{
+			pr_err("%s: Unable to disable votg_l10\n",__func__);
+			return rc;
+		}
+
+		/* Due to hardware change, it will not use GPIO102 as 5V boost Enable since EVT1*/
+		#ifdef USE_REGULATOR_VDD5V
+		if (board_is_topaz_wifi() && board_type < TOPAZ_EVT1)
+		{
+			rc = regulator_disable(votg_vdd5v);
+			if(rc)
+			{
+				pr_err("%s: Unable to disable votg_vdd5v\n",__func__);
+				return rc;
+			}
+		}
+		#endif
+
+		gpio_set_value_cansleep(GPIO_BACKLIGHT_EN, 0);
+		mdelay(5);
+		gpio_set_value_cansleep(GPIO_LVDS_SHDN_N, 0);
+		gpio_set_value_cansleep(GPIO_LCD_PWR_EN, 0);
+		mdelay(20);
+		gpio_free(GPIO_BACKLIGHT_EN);
+		gpio_free(GPIO_LVDS_SHDN_N);
+		gpio_free(GPIO_LCD_PWR_EN);
+	}
+
+	lcdc_gpio_request(on);
+	return 0;
+}
+#undef _GET_REGULATOR
+#endif
+
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
 #define _GET_REGULATOR(var, name) do {				\
 	var = regulator_get(NULL, name);			\
@@ -9031,17 +9262,24 @@ error:
 
 static int lcdc_panel_power(int on)
 {
+	int rc = 0;
 	int flag_on = !!on;
-	static int lcdc_power_save_on;
+	static int lcdc_power_save_on = 0;
 
 	if (lcdc_power_save_on == flag_on)
 		return 0;
 
 	lcdc_power_save_on = flag_on;
 
-	lcdc_samsung_panel_power(on);
+	if (machine_is_tenderloin()) {
+#if defined(CONFIG_FB_MSM_LCDC_LG_XGA)
+		rc = lcdc_common_panel_power(on);
+#endif
+	} else {
+		lcdc_samsung_panel_power(on);
+	}
 
-	return 0;
+	return rc;
 }
 
 #ifdef CONFIG_MSM_BUS_SCALING
@@ -10316,7 +10554,7 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 
 	msm_clock_init(&msm8x60_clock_init_data);
 
-	if (machine_is_tenderloin() && 0) {
+	if (machine_is_tenderloin()) {
 		tenderloin_clock_fixup();
 	}
 
@@ -10455,6 +10693,11 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 		platform_add_devices(rumi_sim_devices,
 				     ARRAY_SIZE(rumi_sim_devices));
 	}
+
+	if (machine_is_tenderloin()) {
+		register_lcdc_panel();
+	}
+
 #if defined(CONFIG_USB_PEHCI_HCD) || defined(CONFIG_USB_PEHCI_HCD_MODULE)
 	if (machine_is_msm8x60_surf() || machine_is_msm8x60_ffa() ||
 		machine_is_msm8x60_dragon())
