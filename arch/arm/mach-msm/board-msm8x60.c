@@ -8142,6 +8142,7 @@ struct sdcc_reg {
 	unsigned int lpm_uA;
 	unsigned int hpm_uA;
 };
+
 /* all SDCC controllers require VDD/VCC voltage */
 static struct sdcc_reg sdcc_vdd_reg_data[MAX_SDCC_CONTROLLER];
 /* only SDCC1 requires VCCQ voltage */
@@ -8401,6 +8402,7 @@ setup_vreg:
 	return rc;
 }
 
+#if defined(CONFIG_MMC_MSM_SDC2_SUPPORT) || defined(CONFIG_MMC_MSM_SDC5_SUPPORT)
 static void msm_sdcc_sdio_lpm_gpio(struct device *dv, unsigned int active)
 {
 	struct msm_sdcc_pin_cfg *curr_pin_cfg;
@@ -8420,6 +8422,7 @@ static void msm_sdcc_sdio_lpm_gpio(struct device *dv, unsigned int active)
 		msm_sdcc_setup_pad(pdev->id, active);
 	curr_pin_cfg->sdio_lpm_gpio_cfg = 0;
 }
+#endif
 
 static int msm_sdc3_get_wpswitch(struct device *dev)
 {
