@@ -11154,7 +11154,7 @@ MACHINE_START(MSM8X60_DRAGON, "QCT MSM8X60 DRAGON")
 	.init_early = msm8x60_charm_init_early,
 MACHINE_END
 
-MACHINE_START(TENDERLOIN, "QCT MSM8X60 TENDERLOIN")
+MACHINE_START(TENDERLOIN, "TENDERLOIN")
 	.map_io = msm8x60_map_io,
 	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
