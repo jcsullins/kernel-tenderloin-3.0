@@ -85,6 +85,7 @@
 #include <mach/rpm-regulator.h>
 #include <mach/restart.h>
 #include <mach/board-msm8660.h>
+#include <linux/gpio_keys.h>
 
 #include "devices.h"
 #include "devices-msm8x60.h"
@@ -3730,6 +3731,87 @@ static struct msm_serial_hs_platform_data msm_uart_dm1_pdata = {
 };
 #endif
 
+#ifdef CONFIG_KEYBOARD_GPIO
+static struct gpio_keys_button topaz_wifi_gpio_keys_buttons[] = {
+	{
+		.code           = KEY_VOLUMEUP,
+		.gpio           = 103,
+		.desc           = "VolUp",
+		.active_low     = 1,
+		.type		= EV_KEY,
+		.wakeup		= 0
+	},
+	{
+		.code           = KEY_VOLUMEDOWN,
+		.gpio           = 104,
+		.desc           = "VolDn",
+		.active_low     = 1,
+		.type		= EV_KEY,
+		.wakeup		= 0
+	},
+	{
+		.code           = KEY_HOME,
+		.gpio           = 40,
+		.desc           = "Home",
+		.active_low     = 1,
+		.type		= EV_KEY,
+		.wakeup		= 1
+	},
+};
+
+#if 0 /* TODO - enable later */
+static struct gpio_keys_button topaz_3g_gpio_keys_buttons[] = {
+	{
+		.code           = KEY_VOLUMEUP,
+		.gpio           = PM8058_GPIO_PM_TO_SYS(5),
+		.desc           = "VolUp",
+		.active_low     = 1,
+		.type		= EV_KEY,
+		.wakeup		= 0
+	},
+	{
+		.code           = KEY_VOLUMEDOWN,
+		.gpio           = PM8058_GPIO_PM_TO_SYS(6),
+		.desc           = "VolDn",
+		.active_low     = 1,
+		.type		= EV_KEY,
+		.wakeup		= 0
+	},
+	{
+		.code           = KEY_HOME,
+		.gpio           = 40,
+		.desc           = "Home",
+		.active_low     = 1,
+		.type		= EV_KEY,
+		.wakeup		= 0
+	},
+};
+
+static struct gpio_keys_platform_data topaz_3g_gpio_keys_data = {
+	.buttons        = topaz_3g_gpio_keys_buttons,
+	.nbuttons       = ARRAY_SIZE(topaz_3g_gpio_keys_buttons),
+	.rep		= 0,
+};
+#endif
+
+static struct gpio_keys_platform_data topaz_wifi_gpio_keys_data = {
+	.buttons        = topaz_wifi_gpio_keys_buttons,
+	.nbuttons       = ARRAY_SIZE(topaz_wifi_gpio_keys_buttons),
+	.rep		= 0,
+};
+
+
+static struct platform_device msm_gpio_keys = {
+	.name           = "gpio-keys",
+	.id             = -1,
+/*
+	//This guy will be valued when msm8x60_init.
+	.dev            = {
+		.platform_data  = &gpio_keys_data,
+	},
+*/
+};
+#endif
 
 #if defined(CONFIG_GPIO_SX150X) || defined(CONFIG_GPIO_SX150X_MODULE)
 
@@ -5236,6 +5318,9 @@ static struct platform_device *surf_devices[] __initdata = {
 #endif
 #ifdef CONFIG_BATTERY_MSM
 	&msm_batt_device,
+#endif
+#ifdef CONFIG_KEYBOARD_GPIO
+	&msm_gpio_keys,
 #endif
 #ifdef CONFIG_ANDROID_PMEM
 #ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
@@ -10594,6 +10679,20 @@ static void __init tenderloin_setup_pin_table(void)
 			pin_table = &tenderloin_pins_wifi[0];
 		}
 	}
+
+#ifdef CONFIG_KEYBOARD_GPIO
+	if (machine_is_tenderloin()) {
+		msm_gpio_keys.dev.platform_data = &topaz_wifi_gpio_keys_data;
+	}
+#if 0 /* TODO */
+	else if (board_is_opal_wifi()||board_is_opal_3g()||board_is_topaz_3g()) {
+		msm_gpio_keys.dev.platform_data = &topaz_3g_gpio_keys_data;
+	}
+#endif
+	else
+		msm_gpio_keys.dev.platform_data = &topaz_wifi_gpio_keys_data;
+#endif
+
 
 #if 0 // TODO
 	// touchpanel
