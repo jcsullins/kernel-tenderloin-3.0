@@ -1477,6 +1477,13 @@ config SURF_FFA_GPIO_KEYPAD
 	help
 	  Select if the GPIO keypad is attached.
 
+config MSM_UARTDM
+        tristate "MSM UARTDM (High Speed) Driver"
+        depends on ARCH_MSM
+        default y
+        help
+          Provides access to the high speed uart ports.
+
 config MSM_SLEEP_TIME_OVERRIDE
 	bool "Allow overriding suspend/sleep time with PM module parameter"
 	default y

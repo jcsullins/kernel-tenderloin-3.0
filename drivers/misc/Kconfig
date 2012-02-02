@@ -229,6 +229,17 @@ config ATMEL_SSC
 
 	  If unsure, say N.
 
+config HSUART
+        bool "High Speed UART engine"
+        default n
+        ---help---
+          Generic HSUART engine, which calls platform specific code to facilitate High speed UART driver".
+
+config USER_PINS
+        tristate "Sysfs GPIO pins control"
+        ---help---
+                Select Y if you want to expose some gpio pins through sysfs.
+
 config ENCLOSURE_SERVICES
 	tristate "Enclosure Services"
 	default n

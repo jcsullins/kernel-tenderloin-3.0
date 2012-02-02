@@ -67,3 +67,5 @@ obj-$(CONFIG_PMIC8058_MISC) += pmic8058-misc.o
 obj-$(CONFIG_PMIC8058_BATTALARM) += pmic8058-batt-alarm.o
 obj-$(CONFIG_TZCOM) += tzcom.o
 obj-$(CONFIG_KERNEL_LOG)	+= klog.o
+obj-$(CONFIG_HSUART)		+= hsuart.o
+obj-$(CONFIG_USER_PINS)         += user-pins.o
