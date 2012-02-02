@@ -2586,7 +2586,7 @@ static struct msm_i2c_platform_data msm_gsbi9_qup_i2c_pdata = {
 
 static void board_gsbi10_init2(int unused1, int unused2);
 static struct msm_i2c_platform_data msm_gsbi10_qup_i2c_pdata = {
-	.clk_freq = 300000,
+	.clk_freq = 400000,
 	.src_clk_rate = 24000000,
 	.use_gsbi_shared_mode = 1,
 	.msm_i2c_config_gpio = board_gsbi10_init2,
@@ -5664,6 +5664,8 @@ static struct platform_device *asoc_devices[] __initdata = {
 	&asoc_msm_dai1,
 };
 
+extern struct platform_device tenderloin_fixed_reg_device[];
+
 static struct platform_device *surf_devices[] __initdata = {
 	&msm_device_smd,
 	&msm_device_uart_dm12,
@@ -5676,6 +5678,7 @@ static struct platform_device *surf_devices[] __initdata = {
 	&msm_gsbi7_qup_i2c_device,
 	&msm_gsbi8_qup_i2c_device,
 	&msm_gsbi9_qup_i2c_device,
+	&msm_gsbi10_qup_i2c_device,
 	&msm_gsbi12_qup_i2c_device,
 #endif
 #ifdef CONFIG_SERIAL_MSM_HS
@@ -5778,6 +5781,7 @@ static struct platform_device *surf_devices[] __initdata = {
 #ifdef CONFIG_USER_PINS
 	&board_user_pins_device,
 #endif
+	&tenderloin_fixed_reg_device[0],
 #if defined(CONFIG_MSM_RPM_STATS_LOG)
 	&msm8660_rpm_stat_device,
 #endif
