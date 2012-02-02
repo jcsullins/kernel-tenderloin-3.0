@@ -2546,11 +2546,12 @@ static struct msm_i2c_platform_data msm_gsbi9_qup_i2c_pdata = {
 	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
 };
 
+static void board_gsbi10_init2(int unused1, int unused2);
 static struct msm_i2c_platform_data msm_gsbi10_qup_i2c_pdata = {
 	.clk_freq = 400000,
 	.src_clk_rate = 24000000,
 	.use_gsbi_shared_mode = 1,
-	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
+	.msm_i2c_config_gpio = board_gsbi10_init2,
 };
 
 static struct msm_i2c_platform_data msm_gsbi12_qup_i2c_pdata = {
@@ -2633,12 +2634,17 @@ static int board_gsbi10_init(void)
 	return (board_gsbi_init(10, &inited, I2C_ON_2_PORTS_UART));
 }
 
+static void board_gsbi10_init2(int unused1, int unused2)
+{
+	board_gsbi10_init();
+}
+
 #if defined (CONFIG_TOUCHSCREEN_CY8CTMA395) \
 	|| defined (CONFIG_TOUCHSCREEN_CY8CTMA395_MODULE)
 static struct user_pin ctp_pins[] = {
 	{
 		.name = "wake",
-  		.gpio = GPIO_CTP_WAKE,
+		.gpio = GPIO_CTP_WAKE,
 		.act_level = 0,
 		.direction = 0,
 		.def_level = 1,
@@ -7785,14 +7791,6 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
 		ARRAY_SIZE(wm8903_codec_i2c_info),
 	},
 #endif
-#ifdef CONFIG_TOUCHSCREEN_CYPRESS_HP_I2C        
-	{
-		I2C_TOPAZ | I2C_OPAL,
-		MSM_GSBI10_QUP_I2C_BUS_ID,   // yegw use GSBI10 as touch i2c
-		cypress_cytcb5s_touch_info,
-		ARRAY_SIZE(cypress_cytcb5s_touch_info),
-	},
-#endif
 };
 #endif /* CONFIG_I2C */
 
@@ -7816,7 +7814,8 @@ static void fixup_i2c_configs(void)
 	 * implies that the regulator connected to MPP0 is enabled when
 	 * MPP0 is low.
 	 */
-	if (machine_is_msm8x60_surf() || machine_is_msm8x60_fusion())
+	if (machine_is_msm8x60_surf() || machine_is_msm8x60_fusion() ||
+	    machine_is_tenderloin())
 		pm8901_vreg_init_pdata[PM8901_VREG_ID_MPP0].active_high = 0;
 	else
 		pm8901_vreg_init_pdata[PM8901_VREG_ID_MPP0].active_high = 1;
