@@ -131,8 +131,8 @@ static struct uart_port_item	ports_db[UARTDM_NUM_PORTS] =
 			 */
 			.rx_fifo_size = FIFO_SZ,
 			.tx_fifo_size = FIFO_SZ,
-			.p_clk_name = "uartdm_clk",
-			.p_pclk_name = "uartdm_pclk",
+			.p_clk_name = "core_clk",
+			.p_pclk_name = "iface_clk",
 			.id	= 0,
 			.rx_dm = {0},
 		},
@@ -152,8 +152,8 @@ static struct uart_port_item	ports_db[UARTDM_NUM_PORTS] =
 			 */
 			.rx_fifo_size = FIFO_SZ,
 			.tx_fifo_size = FIFO_SZ,
-			.p_clk_name = "uartdm_clk",
-			.p_pclk_name = "uartdm_pclk",
+			.p_clk_name = "core_clk",
+			.p_pclk_name = "iface_clk",
 			.id	= 1,
 			.rx_dm  = {0},
 		},
@@ -2199,7 +2199,8 @@ msm_uartdm_probe(struct platform_device *pdev)
 	p_msm_port = GEN_UART_TO_MSM(p_port);
 
 	p_msm_port->p_clk = clk_get(&pdev->dev, p_msm_port->p_clk_name);
-	if (unlikely(NULL == p_msm_port->p_clk)) {
+	if (IS_ERR(p_msm_port->p_clk)) {
+printk("Cannot get clock %s\n", p_msm_port->p_clk_name);
 		ret =  -ENXIO;
 		line_number = __LINE__;
 		goto probe_err_invalid_param;
