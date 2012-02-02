@@ -32,6 +32,7 @@
 #include <linux/i2c/sx150x.h>
 #include <linux/smsc911x.h>
 #include <linux/spi/spi.h>
+#include <linux/cy8ctma395.h>
 #include <linux/input/tdisc_shinetsu.h>
 #include <linux/input/cy8c_ts.h>
 #include <linux/cyttsp.h>
@@ -84,6 +85,14 @@
 #include <mach/rpm-regulator.h>
 #include <mach/restart.h>
 #include <linux/gpio_keys.h>
+
+#ifdef CONFIG_HSUART
+#include <linux/hsuart.h>
+#endif
+
+#ifdef CONFIG_USER_PINS
+#include <linux/user-pins.h>
+#endif
 
 #include "devices.h"
 #include "devices-msm8x60.h"
@@ -268,6 +277,30 @@ enum {
 	GPIO_EPM_EXPANDER_IO14,
 	GPIO_EPM_EXPANDER_IO15,
 };
+
+/* helper function to manipulate group of gpios (msm_gpiomux)*/
+static int configure_gpiomux_gpios(int on, int gpios[], int cnt)
+{
+	int ret = 0;
+	int i;
+
+	for (i = 0; i < cnt; i++) {
+		//printk(KERN_ERR "%s:pin(%d):%s\n", __func__, gpios[i], on?"on":"off");
+		if (on) {
+			ret = msm_gpiomux_get(gpios[i]);
+			if (unlikely(ret))
+				break;
+		} else {
+			ret = msm_gpiomux_put(gpios[i]);
+			if (unlikely(ret))
+				return ret;
+		}
+	}
+	if (ret)
+		for (; i >= 0; i--)
+			msm_gpiomux_put(gpios[i]);
+	return ret;
+}
 
 struct pm8xxx_mpp_init_info {
 	unsigned			mpp;
@@ -2513,6 +2546,13 @@ static struct msm_i2c_platform_data msm_gsbi9_qup_i2c_pdata = {
 	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
 };
 
+static struct msm_i2c_platform_data msm_gsbi10_qup_i2c_pdata = {
+	.clk_freq = 300000,
+	.src_clk_rate = 24000000,
+	.use_gsbi_shared_mode = 1,
+	.msm_i2c_config_gpio = gsbi_qup_i2c_gpio_config,
+};
+
 static struct msm_i2c_platform_data msm_gsbi12_qup_i2c_pdata = {
 	.clk_freq = 100000,
 	.src_clk_rate = 24000000,
@@ -2528,6 +2568,351 @@ static struct msm_spi_platform_data msm_gsbi1_qup_spi_pdata = {
 
 static struct msm_spi_platform_data msm_gsbi10_qup_spi_pdata = {
 	.max_clock_speed = 24000000,
+};
+#endif
+
+#define GSBI1_PHYS                      0x16000000
+#define GSBI8_PHYS                      0x19800000
+#define GSBI_CTRL                       0x0
+#define PROTOCOL_CODE(code)             (((code) & 0x7) << 4)
+#define UART_WITH_FLOW_CONTROL          0x4
+#define I2C_ON_2_PORTS_UART             0x6
+
+static DEFINE_MUTEX(gsbi_init_lock);
+
+static int board_gsbi_init(int gsbi, int *inited, u32 prot)
+{
+	int rc;
+	u32 gsbi_phys;
+	void *gsbi_virt;
+
+	pr_debug("%s: gsbi=%d inited=%d\n", __func__, gsbi, *inited);
+
+	mutex_lock(&gsbi_init_lock);
+
+	if (*inited) {
+		rc = 0;
+		goto exit;
+	}
+
+	pr_debug("%s: gsbi=%d prot=%x", __func__, gsbi, prot);
+
+	if ((gsbi >= 1) && (gsbi <= 7))
+		gsbi_phys = GSBI1_PHYS + ((gsbi - 1) * 0x100000);
+
+	else if ((gsbi >= 8) && (gsbi <= 12))
+		gsbi_phys = GSBI8_PHYS + ((gsbi - 8) * 0x100000);
+
+	else {
+		rc = -EINVAL;
+		goto exit;
+	}
+
+	gsbi_virt = ioremap(gsbi_phys, 4);
+	if (!gsbi_virt) {
+		pr_err("error remapping address 0x%08x\n", gsbi_phys);
+		rc = -ENXIO;
+		goto exit;
+	}
+
+	pr_debug("%s: %08x=%08x\n", __func__, gsbi_phys + GSBI_CTRL,
+			PROTOCOL_CODE(prot));
+	writel(PROTOCOL_CODE(prot), gsbi_virt + GSBI_CTRL);
+	iounmap(gsbi_virt);
+	rc = 0;
+exit:
+	mutex_unlock(&gsbi_init_lock);
+
+	return (rc);
+}
+
+static int board_gsbi10_init(void)
+{
+	static int inited = 0;
+
+	return (board_gsbi_init(10, &inited, I2C_ON_2_PORTS_UART));
+}
+
+#if defined (CONFIG_TOUCHSCREEN_CY8CTMA395) \
+	|| defined (CONFIG_TOUCHSCREEN_CY8CTMA395_MODULE)
+static struct user_pin ctp_pins[] = {
+	{
+		.name = "wake",
+  		.gpio = GPIO_CTP_WAKE,
+		.act_level = 0,
+		.direction = 0,
+		.def_level = 1,
+		.sysfs_mask = 0660,
+	},
+};
+
+#define CTP_UART_SPEED_SLOW		3000000
+#define CTP_UART_SPEED_FAST		4000000
+
+static int ctp_uart_pin_mux(int on)
+{
+	int rc;
+	static int is_on = 0;
+
+	pr_debug("%s: on=%d\n", __func__, on);
+
+	if (on && !is_on)
+		rc = msm_gpiomux_get(GPIO_CTP_RX);
+
+	else if (!on && is_on)
+		rc = msm_gpiomux_put(GPIO_CTP_RX);
+
+	else
+		rc = 0;
+
+	is_on = on;
+
+	return (rc);
+}
+
+static struct hsuart_platform_data ctp_uart_data = {
+	.dev_name = "ctp_uart",
+	.uart_mode = HSUART_MODE_FLOW_CTRL_NONE | HSUART_MODE_PARITY_NONE,
+	.uart_speed = CTP_UART_SPEED_SLOW,
+	.options = HSUART_OPTION_RX_DM | HSUART_OPTION_SCHED_RT,
+
+	.tx_buf_size = 4096,
+	.tx_buf_num = 1,
+	.rx_buf_size = 16384,
+	.rx_buf_num = 2,
+	.max_packet_size = 10240,
+	.min_packet_size = 1,
+	.rx_latency = CTP_UART_SPEED_FAST/20000,	/* bytes per 500 us */
+	.p_board_pin_mux_cb = ctp_uart_pin_mux,
+	.p_board_config_gsbi_cb = board_gsbi10_init,
+};
+
+static struct platform_device ctp_uart_device = {
+	.name = "hsuart",
+	.id =  1,
+	.dev  = {
+		.platform_data = &ctp_uart_data,
+	}
+};
+
+static int board_cy8ctma395_gpio_request(unsigned gpio, const char *name,
+						int request, int *requested,
+						struct gpiomux_setting *new,
+						struct gpiomux_setting *old,
+						int *replaced)
+{
+	int rc;
+
+	if (request && !*requested) {
+		rc = gpio_request(gpio, name);
+		if (rc < 0) {
+			pr_err("error %d requesting gpio %u (%s)\n", rc, gpio, name);
+			goto gpio_request_failed;
+		}
+
+		rc = msm_gpiomux_write(gpio, GPIOMUX_ACTIVE, new, old);
+		if (rc < 0)  {
+			pr_err("error %d muxing gpio %u (%s)\n", rc, gpio, name);
+			goto msm_gpiomux_write_failed;
+		}
+
+		*replaced = !rc;
+
+		rc = msm_gpiomux_get(gpio);
+		if (rc < 0)  {
+			pr_err("error %d 'getting' gpio %u (%s)\n", rc, gpio, name);
+			goto msm_gpiomux_get_failed;
+		}
+
+		*requested = 1;
+	}
+
+	else if (!request && *requested) {
+		msm_gpiomux_put(gpio);
+		msm_gpiomux_write(gpio, GPIOMUX_ACTIVE, *replaced ? old : NULL, NULL);
+		gpio_free(gpio);
+		*requested = 0;
+	}
+
+	return (0);
+
+msm_gpiomux_get_failed:
+	msm_gpiomux_write(gpio, GPIOMUX_ACTIVE, *replaced ? old : NULL, NULL);
+msm_gpiomux_write_failed:
+	gpio_free(gpio);
+gpio_request_failed:
+
+	return (rc);
+}
+
+static int board_cy8ctma395_swdck_request(int request)
+{
+	static int replaced = 0;
+	static int requested = 0;
+	static struct gpiomux_setting scl;
+
+	struct gpiomux_setting swdck = {
+		.func = GPIOMUX_FUNC_GPIO,
+		.drv = GPIOMUX_DRV_8MA,
+		.pull = GPIOMUX_PULL_NONE,
+		.dir = GPIOMUX_OUT_HIGH,
+	};
+
+	return (board_cy8ctma395_gpio_request(GPIO_CTP_SCL, "CY8CTMA395_SWDCK",
+						request, &requested, &swdck,
+						&scl, &replaced));
+}
+
+static int board_cy8ctma395_swdio_request(int request)
+{
+	static int replaced = 0;
+	static int requested = 0;
+	static struct gpiomux_setting sda;
+
+	struct gpiomux_setting swdio = {
+		.func = GPIOMUX_FUNC_GPIO,
+		.drv = GPIOMUX_DRV_8MA,
+		.pull = GPIOMUX_PULL_NONE,
+		.dir = GPIOMUX_OUT_HIGH,
+	};
+
+	return (board_cy8ctma395_gpio_request(GPIO_CTP_SDA, "CY8CTMA395_SWDIO",
+						request, &requested, &swdio,
+						&sda, &replaced));
+}
+
+static void board_cy8ctma395_vdd_enable(int enable)
+{
+	int rc;
+	static struct regulator *tp_5v0 = NULL;
+	static struct regulator *tp_l10 = NULL;
+	static int isPowerOn = 0;
+
+	if (!tp_l10) {
+		tp_l10 = regulator_get(NULL, "8058_l10");
+		if (IS_ERR(tp_l10)) {
+			pr_err("%s: failed to get regulator \"8058_l10\"\n", __func__);
+			return;
+		}
+
+		rc = regulator_set_voltage(tp_l10, 3050000, 3050000);
+		if (rc) {
+			pr_err("%s: Unable to set regulator voltage:"
+			       " tp_l10\n", __func__);
+			regulator_put(tp_l10);
+			tp_l10 = NULL;
+			return;
+		}
+	}
+
+	if (!tp_5v0) {
+		tp_5v0 = regulator_get(NULL, "vdd50_boost");
+		if (IS_ERR(tp_5v0)) {
+			pr_err("failed to get regulator 'vdd50_boost' with %ld\n",
+				PTR_ERR(tp_5v0));
+			regulator_put(tp_l10);
+			tp_l10 = NULL;
+			tp_5v0 = NULL;
+			return;
+		}
+	}
+
+	if (enable == isPowerOn) {
+		return;
+	}
+
+	if (enable) {
+		rc = regulator_enable(tp_l10);
+		if (rc < 0) {
+			pr_err("failed to enable regulator '8058_l10' with %d\n", rc);
+			return;
+		}
+
+		rc = regulator_enable(tp_5v0);
+		if (rc < 0) {
+			pr_err("failed to enable regulator 'vdd50_boost' with %d\n", rc);
+			return;
+		}
+
+		// Make sure the voltage is stabilized
+		msleep(2);
+	}
+
+	else {
+		rc = regulator_disable(tp_5v0);
+		if (rc < 0) {
+			pr_err("failed to disable regulator 'vdd50_boost' with %d\n", rc);
+			return;
+		}
+
+		rc = regulator_disable(tp_l10);
+		if (rc < 0) {
+			pr_err("failed to enable regulator '8058_l10' with %d\n", rc);
+			return;
+		}
+	}
+
+	isPowerOn = enable;
+}
+
+static struct cy8ctma395_platform_data board_cy8ctma395_data = {
+	.swdck_request = board_cy8ctma395_swdck_request,
+	.swdio_request = board_cy8ctma395_swdio_request,
+	.vdd_enable = board_cy8ctma395_vdd_enable,
+	.xres = GPIO_CY8CTMA395_XRES,
+	.xres_us = 1000,
+	.swdck = GPIO_CTP_SCL,
+	.swdio = GPIO_CTP_SDA,
+	.swd_wait_retries = 0,
+	.port_acquire_retries = 4,
+	.status_reg_timeout_ms = 1000,
+	.nr_blocks = 256,
+};
+
+static struct platform_device board_cy8ctma395_device = {
+	.name = CY8CTMA395_DEVICE,
+	.id = -1,
+	.dev = {
+		.platform_data = &board_cy8ctma395_data,
+         },
+};
+
+static int tenderloin_tp_init(int on)
+{
+	int ret;
+	int tp_gpios[] = {GPIO_CTP_SCL, GPIO_CTP_SDA};
+	ret = configure_gpiomux_gpios(on, tp_gpios, ARRAY_SIZE(tp_gpios));
+	if (ret < 0) {
+		printk(KERN_ERR "%s: Error %d while configuring touch panel gpios.\n", __func__, ret);
+	}
+	return ret;
+}
+
+#endif /* CONFIG_TOUCHSCREEN_CY8CTMA395[_MODULE] */
+
+#ifdef CONFIG_USER_PINS
+static struct user_pin_set  board_user_pins_sets[] = {
+#if defined (CONFIG_TOUCHSCREEN_CY8CTMA395) \
+	|| defined (CONFIG_TOUCHSCREEN_CY8CTMA395_MODULE)
+	{
+		.set_name = "ctp",
+		.num_pins = ARRAY_SIZE(ctp_pins),
+		.pins = ctp_pins,
+	},
+#endif /* CONFIG_TOUCHSCREEN_CY8CTMA395[_MODULE] */
+};
+
+static struct user_pins_platform_data board_user_pins_pdata = {
+	.num_sets = ARRAY_SIZE(board_user_pins_sets),
+	.sets     = board_user_pins_sets,
+};
+
+static struct platform_device board_user_pins_device = {
+	.name = "user-pins",
+	.id   = -1,
+	.dev  = {
+		.platform_data  = &board_user_pins_pdata,
+	}
 };
 #endif
 
@@ -5286,6 +5671,9 @@ static struct platform_device *surf_devices[] __initdata = {
 #if defined(CONFIG_MSM_RPM_LOG) || defined(CONFIG_MSM_RPM_LOG_MODULE)
 	&msm_rpm_log_device,
 #endif
+#ifdef CONFIG_USER_PINS
+	&board_user_pins_device,
+#endif
 #if defined(CONFIG_MSM_RPM_STATS_LOG)
 	&msm_rpm_stat_device,
 #endif
@@ -5328,6 +5716,13 @@ static struct platform_device *surf_devices[] __initdata = {
 	&ion_dev,
 #endif
 	&msm8660_device_watchdog,
+#if defined (CONFIG_TOUCHSCREEN_CY8CTMA395) \
+	|| defined (CONFIG_TOUCHSCREEN_CY8CTMA395_MODULE)
+	&board_cy8ctma395_device,
+	&msm_device_uart_dm2,
+	&ctp_uart_device,
+#endif /* CONFIG_TOUCHSCREEN_CY8CTMA395[_MODULE] */
+
 };
 
 #ifdef CONFIG_ION_MSM
@@ -5376,7 +5771,6 @@ struct platform_device ion_dev = {
 	.dev = { .platform_data = &ion_pdata },
 };
 #endif
-
 
 static struct memtype_reserve msm8x60_reserve_table[] __initdata = {
 	/* Kernel SMI memory pool for video core, used for firmware */
@@ -7387,6 +7781,14 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
 		ARRAY_SIZE(wm8903_codec_i2c_info),
 	},
 #endif
+#ifdef CONFIG_TOUCHSCREEN_CYPRESS_HP_I2C        
+	{
+		I2C_TOPAZ | I2C_OPAL,
+		MSM_GSBI10_QUP_I2C_BUS_ID,   // yegw use GSBI10 as touch i2c
+		cypress_cytcb5s_touch_info,
+		ARRAY_SIZE(cypress_cytcb5s_touch_info),
+	},
+#endif
 };
 #endif /* CONFIG_I2C */
 
@@ -7510,6 +7912,7 @@ static void __init msm8x60_init_buses(void)
 	}
 #endif
 	msm_gsbi9_qup_i2c_device.dev.platform_data = &msm_gsbi9_qup_i2c_pdata;
+	msm_gsbi10_qup_i2c_device.dev.platform_data = &msm_gsbi10_qup_i2c_pdata;
 	msm_gsbi12_qup_i2c_device.dev.platform_data = &msm_gsbi12_qup_i2c_pdata;
 #endif
 #if defined(CONFIG_SPI_QUP) || defined(CONFIG_SPI_QUP_MODULE)
@@ -10762,6 +11165,11 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 					     msm_num_footswitch_devices);
 		platform_add_devices(surf_devices,
 				     ARRAY_SIZE(surf_devices));
+
+#if defined (CONFIG_TOUCHSCREEN_CY8CTMA395) \
+	|| defined (CONFIG_TOUCHSCREEN_CY8CTMA395_MODULE)
+		tenderloin_tp_init (true);
+#endif
 
 #ifdef CONFIG_MSM_DSPS
 		if (machine_is_msm8x60_fluid()) {
