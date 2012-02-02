@@ -319,3 +319,5 @@ endif
 
 obj-$(CONFIG_ARCH_MSM8960) += mdm2.o mdm_common.o
 obj-$(CONFIG_MSM_RTB) += msm_rtb.o
+obj-$(CONFIG_MSM_UARTDM) += msm_hsuart.o
+obj-$(CONFIG_MSM_UARTDM) += msm_uart_dm.o

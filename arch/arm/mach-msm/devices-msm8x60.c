@@ -93,6 +93,7 @@
 #define MSM_UART3DM_PHYS    (MSM_GSBI3_PHYS + 0x40000)
 #define INT_UART3DM_IRQ     GSBI3_UARTDM_IRQ
 #define TCSR_BASE_PHYS      0x16b00000
+#define MSM_GSBI10_UART_DM_PHYS (MSM_GSBI10_PHYS + 0x40000)
 
 /* PRNG device */
 #define MSM_PRNG_PHYS		0x16C00000
@@ -261,6 +262,56 @@ struct platform_device msm_device_uart_dm1 = {
 	.resource = msm_uart1_dm_resources,
 	.dev            = {
 		.dma_mask = &msm_uart_dm1_dma_mask,
+		.coherent_dma_mask = DMA_BIT_MASK(32),
+	},
+};
+
+static struct resource msm_uart_dm2_resources[] = {
+	{
+		.start = MSM_GSBI10_UART_DM_PHYS,
+		.end   = MSM_GSBI10_UART_DM_PHYS + PAGE_SIZE - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.start = GSBI10_UARTDM_IRQ,
+		.end   = GSBI10_UARTDM_IRQ,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.start = MSM_GSBI10_PHYS,
+		.end   = MSM_GSBI10_PHYS + 4 - 1,
+		.name  = "gsbi_resource",
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.start = TCSR_BASE_PHYS,
+		.end   = TCSR_BASE_PHYS + 0x80 - 1,
+		.name  = "tcsr_resource",
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.start = DMOV_HSUART2_TX_CHAN,
+		.end   = DMOV_HSUART2_RX_CHAN,
+		.name  = "uartdm_channels",
+		.flags = IORESOURCE_DMA,
+	},
+	{
+		.start = DMOV_HSUART2_TX_CRCI,
+		.end   = DMOV_HSUART2_RX_CRCI,
+		.name  = "uartdm_crci",
+		.flags = IORESOURCE_DMA,
+	},
+};
+
+static u64 msm_uart_dm2_dma_mask = DMA_BIT_MASK(32);
+
+struct platform_device msm_device_uart_dm2 = {
+	.name = "msm_uartdm",
+	.id = 1,
+	.num_resources = ARRAY_SIZE(msm_uart_dm2_resources),
+	.resource = msm_uart_dm2_resources,
+	.dev = {
+		.dma_mask = &msm_uart_dm2_dma_mask,
 		.coherent_dma_mask = DMA_BIT_MASK(32),
 	},
 };
@@ -485,6 +536,28 @@ static struct resource gsbi9_qup_i2c_resources[] = {
 		.end	= GSBI9_QUP_IRQ,
 		.flags	= IORESOURCE_IRQ,
 	},
+};
+
+// config gsbi10 as i2c function
+static struct resource gsbi10_qup_i2c_resources[] = {
+    {
+        .name   = "qup_phys_addr",
+        .start  = MSM_GSBI10_QUP_PHYS,
+        .end    = MSM_GSBI10_QUP_PHYS + SZ_4K - 1,
+        .flags  = IORESOURCE_MEM,
+    },
+    {
+        .name   = "gsbi_qup_i2c_addr",
+        .start  = MSM_GSBI10_PHYS,
+        .end    = MSM_GSBI10_PHYS + 4 - 1,
+        .flags  = IORESOURCE_MEM,
+    },
+    {
+        .name   = "qup_err_intr",
+        .start  = GSBI10_QUP_IRQ,
+        .end    = GSBI10_QUP_IRQ,
+        .flags  = IORESOURCE_IRQ,
+    },
 };
 
 static struct resource gsbi12_qup_i2c_resources[] = {
@@ -879,6 +952,14 @@ struct platform_device msm_gsbi7_qup_i2c_device = {
 	.id		= MSM_GSBI7_QUP_I2C_BUS_ID,
 	.num_resources	= ARRAY_SIZE(gsbi7_qup_i2c_resources),
 	.resource	= gsbi7_qup_i2c_resources,
+};
+
+/* Use GSBI10 QUP for /dev/i2c-5  */
+struct platform_device msm_gsbi10_qup_i2c_device = {
+	.name		= "qup_i2c",
+	.id		= MSM_GSBI10_QUP_I2C_BUS_ID,
+	.num_resources	= ARRAY_SIZE(gsbi10_qup_i2c_resources),
+	.resource	= gsbi10_qup_i2c_resources,
 };
 
 /* Use GSBI12 QUP for /dev/i2c-5 (Sensors) */
