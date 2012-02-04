@@ -31,6 +31,7 @@ struct msm_dmov_errdata {
 struct msm_dmov_cmd {
 	struct list_head list;
 	unsigned int cmdptr;
+	unsigned int crci_mask;
 	void (*complete_func)(struct msm_dmov_cmd *cmd,
 			      unsigned int result,
 			      struct msm_dmov_errdata *err);
@@ -47,7 +48,8 @@ void msm_dmov_enqueue_cmd(unsigned id, struct msm_dmov_cmd *cmd);
 void msm_dmov_enqueue_cmd_ext(unsigned id, struct msm_dmov_cmd *cmd);
 void msm_dmov_stop_cmd(unsigned id, struct msm_dmov_cmd *cmd, int graceful);
 void msm_dmov_flush(unsigned int id);
-int msm_dmov_exec_cmd(unsigned id, unsigned int cmdptr);
+int msm_dmov_exec_cmd(unsigned id, unsigned int crci_mask, unsigned int cmdptr);
+unsigned int msm_dmov_build_crci_mask(int n, ...);
 
 #define DMOV_CRCIS_PER_CONF 10
 
@@ -162,11 +164,14 @@ int msm_dmov_exec_cmd(unsigned id, unsigned int cmdptr);
 #define DMOV_HSUART1_RX_CHAN   23
 #define DMOV_HSUART1_RX_CRCI   9
 
+#define ADM3_0_B_GSBI10_OUT_CRCI        9
+#define ADM3_0_B_GSBI10_IN_CRCI         10
+
 #define DMOV_HSUART2_TX_CHAN   8
-#define DMOV_HSUART2_TX_CRCI   13
+#define DMOV_HSUART2_TX_CRCI    ((1 << 4) + ADM3_0_B_GSBI10_OUT_CRCI)
 
 #define DMOV_HSUART2_RX_CHAN   8
-#define DMOV_HSUART2_RX_CRCI   14
+#define DMOV_HSUART2_RX_CRCI   ((1 << 4) + ADM3_0_B_GSBI10_IN_CRCI)
 
 #elif defined(CONFIG_ARCH_MSM8960)
 #define DMOV_GP_CHAN           9
