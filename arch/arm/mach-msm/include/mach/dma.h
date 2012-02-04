@@ -162,11 +162,23 @@ int msm_dmov_exec_cmd(unsigned id, unsigned int cmdptr);
 #define DMOV_HSUART1_RX_CHAN   23
 #define DMOV_HSUART1_RX_CRCI   9
 
+#ifdef CONFIG_MACH_TENDERLOIN
+/* This is some sneak Palm change to make uart2 to talk to gsbi10 */
+#define ADM3_0_B_GSBI10_OUT_CRCI        9
+#define ADM3_0_B_GSBI10_IN_CRCI         10
+
+#define DMOV_HSUART2_TX_CHAN   8
+#define DMOV_HSUART2_TX_CRCI   ((1 << 4) + ADM3_0_B_GSBI10_OUT_CRCI)
+
+#define DMOV_HSUART2_RX_CHAN   8
+#define DMOV_HSUART2_RX_CRCI   ((1 << 4) + ADM3_0_B_GSBI10_IN_CRCI)
+#else
 #define DMOV_HSUART2_TX_CHAN   8
 #define DMOV_HSUART2_TX_CRCI   13
 
 #define DMOV_HSUART2_RX_CHAN   8
 #define DMOV_HSUART2_RX_CRCI   14
+#endif
 
 #elif defined(CONFIG_ARCH_MSM8960)
 #define DMOV_GP_CHAN           9
