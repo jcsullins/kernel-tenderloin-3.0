@@ -225,6 +225,7 @@ static struct gpiomux_setting uart1dm_active = {
 	.func = GPIOMUX_FUNC_1,
 	.drv = GPIOMUX_DRV_8MA,
 	.pull = GPIOMUX_PULL_NONE,
+	.dir = GPIOMUX_OUT_LOW
 };
 
 static struct gpiomux_setting uart1dm_suspended = {
@@ -353,6 +354,7 @@ static struct gpiomux_setting ts_active = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_8MA,
 	.pull = GPIOMUX_PULL_NONE,
+	.dir = GPIOMUX_OUT_HIGH,
 };
 
 static struct gpiomux_setting ts_active1 = {
@@ -372,10 +374,30 @@ static struct gpiomux_setting ts_suspended1 = {
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_NONE,
 };
+static struct gpiomux_setting ts_suspended_outh = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_NONE,
+	.dir = GPIOMUX_OUT_HIGH,
+};
+
 static struct gpiomux_setting ts_suspended2 = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_UP,
+};
+
+static struct gpiomux_setting bt_pwr_suspended = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_KEEPER,
+};
+
+static struct gpiomux_setting bt_suspended = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_NONE,
+	.dir = GPIOMUX_OUT_LOW,
 };
 
 static struct gpiomux_setting kbd_active = {
@@ -388,6 +410,13 @@ static struct gpiomux_setting kbd_suspend = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_UP,
+};
+
+static struct gpiomux_setting bt_active = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+	.dir = GPIOMUX_OUT_LOW,
 };
 
 
@@ -1179,6 +1208,39 @@ static struct msm_gpiomux_config tenderloin_kbdgpio_cfgs[] __initdata = {
 	},
 };
 
+/* Tenderloin BT configs */
+static struct msm_gpiomux_config tenderloin_bt_configs[] __initdata = {
+	{ /* BT_RST_N */
+		.gpio = 138,
+		.settings = {
+			[GPIOMUX_ACTIVE] = &ts_active,
+			[GPIOMUX_SUSPENDED] = &ts_suspended_outh,
+		},
+	},
+	{ /* BT_POWER */
+		.gpio = 130,
+		.settings = {
+			[GPIOMUX_ACTIVE] = &bt_active,
+			[GPIOMUX_SUSPENDED] = &bt_pwr_suspended,
+		},
+	},
+	{ /* BT_WAKE */
+		.gpio = 131,
+		.settings = {
+			[GPIOMUX_ACTIVE] = &bt_active,
+			[GPIOMUX_SUSPENDED] = &bt_suspended,
+		},
+	},
+	{ /* BT_HOST_WAKE */
+		.gpio = 129,
+		.settings = {
+			[GPIOMUX_ACTIVE] = &kbd_active,
+			[GPIOMUX_SUSPENDED] = &kbd_active,
+		},
+	},
+
+};
+
 #if defined (CONFIG_TOUCHSCREEN_CY8CTMA395) \
         || defined (CONFIG_TOUCHSCREEN_CY8CTMA395_MODULE)
 static struct msm_gpiomux_config tenderloin_ctp_configs[] __initdata = {
@@ -1193,7 +1255,7 @@ static struct msm_gpiomux_config tenderloin_ctp_configs[] __initdata = {
 		.gpio = 70,
 		.settings = {
 			[GPIOMUX_ACTIVE] = &ts_active,
-			[GPIOMUX_SUSPENDED] = &ts_suspended1,
+			[GPIOMUX_SUSPENDED] = &ts_suspended_outh,
 		},
 	},
 	{ /* GPIO_CTP_WAKE */
@@ -2351,6 +2413,7 @@ tenderloin_gpiomux_cfgs[] __initdata = {
 	{msm8x60_pmic_configs, ARRAY_SIZE(msm8x60_pmic_configs)},
 	{tenderloin_lcdc_configs, ARRAY_SIZE(tenderloin_lcdc_configs)},
 	{tenderloin_kbdgpio_cfgs, ARRAY_SIZE(tenderloin_kbdgpio_cfgs)},
+	{tenderloin_bt_configs, ARRAY_SIZE(tenderloin_bt_configs)},
 #if 0
 #if defined(CONFIG_USB_PEHCI_HCD) || defined(CONFIG_USB_PEHCI_HCD_MODULE)
 	{tenderloin_ebi2_configs, ARRAY_SIZE(tenderloin_ebi2_configs)},
