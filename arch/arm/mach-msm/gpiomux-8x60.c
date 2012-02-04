@@ -230,7 +230,13 @@ static struct gpiomux_setting uart1dm_active = {
 static struct gpiomux_setting uart1dm_suspended = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_DOWN,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting uart1dm_suspended_up = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_UP,
 };
 
 static struct gpiomux_setting mi2s_active_cfg = {
@@ -367,6 +373,18 @@ static struct gpiomux_setting ts_suspended1 = {
 	.pull = GPIOMUX_PULL_NONE,
 };
 static struct gpiomux_setting ts_suspended2 = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_UP,
+};
+
+static struct gpiomux_setting kbd_active = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_UP,
+};
+
+static struct gpiomux_setting kbd_suspend = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_UP,
@@ -1036,14 +1054,14 @@ static struct msm_gpiomux_config msm8x60_uart_configs[] __initdata = {
 		.gpio      = 54,
 		.settings = {
 			[GPIOMUX_ACTIVE]    = &uart1dm_active,
-			[GPIOMUX_SUSPENDED] = &uart1dm_suspended,
+			[GPIOMUX_SUSPENDED] = &uart1dm_suspended_up,
 		},
 	},
 	{ /* UARTDM_CTS */
 		.gpio      = 55,
 		.settings = {
 			[GPIOMUX_ACTIVE]    = &uart1dm_active,
-			[GPIOMUX_SUSPENDED] = &uart1dm_suspended,
+			[GPIOMUX_SUSPENDED] = &uart1dm_suspended_up,
 		},
 	},
 	{ /* UARTDM_RFR */
@@ -1125,6 +1143,38 @@ static struct msm_gpiomux_config tenderloin_uart_configs[] __initdata = {
 		.gpio      = 118,
 		.settings = {
 			[GPIOMUX_SUSPENDED] = &console_uart,
+		},
+	},
+};
+
+/* Tenderloin KBD gpio configs */
+static struct msm_gpiomux_config tenderloin_kbdgpio_cfgs[] __initdata = {
+	{ /* VOL_DN_GPIO */
+		.gpio = 104,
+		.settings = {
+			[GPIOMUX_ACTIVE] = &kbd_active,
+			[GPIOMUX_SUSPENDED] = &kbd_suspend,
+		},
+	},
+	{ /* VOL_UP_GPIO */
+		.gpio = 103,
+		.settings = {
+			[GPIOMUX_ACTIVE] = &kbd_active,
+			[GPIOMUX_SUSPENDED] = &kbd_suspend,
+		},
+	},
+	{ /* CORE_NAVI_GPIO */
+		.gpio = 40,
+		.settings = {
+			[GPIOMUX_ACTIVE] = &kbd_active,
+			[GPIOMUX_SUSPENDED] = &kbd_suspend,
+		},
+	},
+	{ /* JACK_DET_GPIO */
+		.gpio = 67,
+		.settings = {
+			[GPIOMUX_ACTIVE] = &kbd_active,
+			[GPIOMUX_SUSPENDED] = &kbd_suspend,
 		},
 	},
 };
@@ -2300,6 +2350,7 @@ tenderloin_gpiomux_cfgs[] __initdata = {
 	{tenderloin_ctp_configs, ARRAY_SIZE(tenderloin_ctp_configs)},
 	{msm8x60_pmic_configs, ARRAY_SIZE(msm8x60_pmic_configs)},
 	{tenderloin_lcdc_configs, ARRAY_SIZE(tenderloin_lcdc_configs)},
+	{tenderloin_kbdgpio_cfgs, ARRAY_SIZE(tenderloin_kbdgpio_cfgs)},
 #if 0
 #if defined(CONFIG_USB_PEHCI_HCD) || defined(CONFIG_USB_PEHCI_HCD_MODULE)
 	{tenderloin_ebi2_configs, ARRAY_SIZE(tenderloin_ebi2_configs)},
