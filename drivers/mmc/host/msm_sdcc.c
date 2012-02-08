@@ -4103,6 +4103,10 @@ msmsdcc_probe(struct platform_device *pdev)
 		if (ret)
 			goto platform_irq_free;
 	}
+
+	if (plat->board_probe)
+		plat->board_probe(pdev->id, host->mmc);
+
 	return 0;
 
  platform_irq_free:
@@ -4176,6 +4180,9 @@ static int msmsdcc_remove(struct platform_device *pdev)
 
 	DBG(host, "Removing SDCC device = %d\n", pdev->id);
 	plat = host->plat;
+
+	if (plat && plat->board_remove)
+		plat->board_remove(pdev->id, host->mmc);
 
 	if (!plat->status_irq)
 		sysfs_remove_group(&pdev->dev.kobj, &dev_attr_grp);

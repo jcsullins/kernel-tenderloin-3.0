@@ -113,6 +113,9 @@ struct msm_mmc_pin_data {
 };
 
 struct mmc_platform_data {
+	void (*board_probe)(int id, struct mmc_host *);
+	void (*board_remove)(int id, struct mmc_host *);
+
 	unsigned int ocr_mask;			/* available voltages */
 	int built_in;				/* built-in device flag */
 	int card_present;			/* card detect state */
