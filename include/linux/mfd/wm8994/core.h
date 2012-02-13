@@ -113,4 +113,6 @@ static inline void wm8994_free_irq(struct wm8994 *wm8994, int irq, void *data)
 int wm8994_irq_init(struct wm8994 *wm8994);
 void wm8994_irq_exit(struct wm8994 *wm8994);
 
+int wm8994_get_boardtype(void);
+
 #endif
