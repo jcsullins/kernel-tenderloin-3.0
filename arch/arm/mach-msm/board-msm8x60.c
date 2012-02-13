@@ -94,6 +94,10 @@
 #include <linux/user-pins.h>
 #endif
 
+#ifdef CONFIG_MFD_WM8958
+#include <linux/mfd/wm8994/pdata.h>
+#endif
+
 #include "devices.h"
 #include "devices-msm8x60.h"
 #include "cpuidle.h"
@@ -7123,6 +7127,137 @@ static struct i2c_board_info msm_i2c_gsbi3_tdisc_info[] = {
 };
 #endif
 
+#ifdef CONFIG_MFD_WM8958
+
+#define WM8994_LDO1_ENABLE 66
+#define WM8994_LDO2_ENABLE 108
+
+
+#if 0
+static int wm8994_ldo_power(int enable)
+{
+		int ret = 0;
+		if (enable)
+		{
+				/* Power up the WM8994 LDOs */
+				pr_err("%s: Power up the WM8994 LDOs\n", __func__);
+				ret = gpio_request(WM8994_LDO1_ENABLE, "wm8994-ldo1");
+				if (ret != 0){
+						pr_err("Failed to get GPIO for WM8994 LDO1: %d\n", ret);
+						return ret;
+				}
+				gpio_direction_output(WM8994_LDO1_ENABLE, 1);
+				gpio_set_value_cansleep(WM8994_LDO1_ENABLE,1);
+				ret = gpio_request(WM8994_LDO2_ENABLE, "wm8994-ldo2");
+				if (ret != 0){
+						pr_err("Failed to get GPIO for WM8994 LDO2: %d\n", ret);
+						return ret;
+				}
+				gpio_direction_output(WM8994_LDO2_ENABLE, 1);
+				gpio_set_value_cansleep(WM8994_LDO2_ENABLE,1);
+		}else
+		{
+				pr_err("%s: Power down the WM8994 LDOs\n", __func__);
+				gpio_direction_output(WM8994_LDO1_ENABLE, 0);
+				gpio_direction_output(WM8994_LDO2_ENABLE, 0);
+				gpio_free(WM8994_LDO2_ENABLE);
+				gpio_free(WM8994_LDO1_ENABLE);
+		}
+		return ret;
+}
+
+#else
+static int wm8994_ldo_power(int enable)
+{
+
+		gpio_tlmm_config(GPIO_CFG(66, 0, GPIO_CFG_OUTPUT,GPIO_CFG_NO_PULL, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
+		gpio_tlmm_config(GPIO_CFG(108, 0, GPIO_CFG_OUTPUT,GPIO_CFG_NO_PULL, GPIO_CFG_2MA), GPIO_CFG_ENABLE);
+		if (enable)
+		{
+				pr_err("%s: Power up the WM8994 LDOs\n", __func__);
+				gpio_set_value_cansleep(66,1);
+				gpio_set_value_cansleep(108,1);
+		}else{
+				pr_err("%s: Power down the WM8994 LDOs\n", __func__);
+				gpio_set_value_cansleep(66,0);
+				gpio_set_value_cansleep(108,0);
+		}
+		return 0;
+
+}
+
+#endif
+
+static struct regulator *vreg_wm8958;
+static unsigned int msm_wm8958_setup_power(void)
+{
+		int rc=0;
+
+		pr_err("%s: codec power setup\n", __func__);
+		vreg_wm8958 = regulator_get(NULL, "8058_s3");
+		if (IS_ERR(vreg_wm8958)) {
+				pr_err("%s: Unable to get 8058_s3\n", __func__);
+				return -ENODEV;
+		}
+
+		if(regulator_set_voltage(vreg_wm8958, 1800000, 1800000))
+		{
+				pr_err("%s: Unable to set regulator voltage:"
+								" votg_8058_s3\n", __func__);
+		}
+		rc = regulator_enable(vreg_wm8958);
+
+		if (rc) {
+				pr_err("%s: Enable regulator 8058_s3 failed\n", __func__);
+
+		}
+		wm8994_ldo_power(1);
+		mdelay(30);
+		return rc;
+}
+
+static void msm_wm8958_shutdown_power(void)
+{
+		int rc;
+		pr_err("%s: codec power shutdown\n", __func__);
+		wm8994_ldo_power(0);
+		rc = regulator_disable(vreg_wm8958);
+		if (rc)
+				pr_err("%s: Disable regulator 8058_s3 failed\n", __func__);
+
+		regulator_put(vreg_wm8958);
+}
+
+static int msm_wm8958_get_boardtype(void)
+{
+	if (board_is_topaz_3g()||board_is_topaz_wifi())
+		return 0;
+	 if(board_is_opal_3g() || board_is_opal_wifi())
+		return 1;
+	return -1;
+}
+
+static struct wm8994_pdata wm8958_pdata = {
+
+		.gpio_defaults[0] = 0x1,       // gpio1 output as PA switch
+		.gpio_defaults[5] = 0x2005,  // gpio6 output as IRQ to identify headset mic or key status change.
+		.wm8994_setup = msm_wm8958_setup_power,
+		.wm8994_shutdown = msm_wm8958_shutdown_power,
+		.wm8994_get_boardtype = msm_wm8958_get_boardtype,
+};
+
+
+
+#define WM8958_I2C_SLAVE_ADDR	0x1a
+
+static struct i2c_board_info msm_i2c_gsbi7_wm8958_info[] = {
+	{
+		I2C_BOARD_INFO("wm8958", WM8958_I2C_SLAVE_ADDR),
+		.platform_data = &wm8958_pdata,
+	},
+};
+#endif
+
 #define PM_GPIO_CDC_RST_N 20
 #define GPIO_CDC_RST_N PM8058_GPIO_PM_TO_SYS(PM_GPIO_CDC_RST_N)
 
@@ -7816,6 +7951,14 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
 		MSM_GSBI4_QUP_I2C_BUS_ID,
 		msm_camera_dragon_boardinfo,
 		ARRAY_SIZE(msm_camera_dragon_boardinfo),
+	},
+#endif
+#ifdef CONFIG_MFD_WM8958
+{
+		I2C_TENDERLOIN,
+		MSM_GSBI7_QUP_I2C_BUS_ID,
+		msm_i2c_gsbi7_wm8958_info,
+		ARRAY_SIZE(msm_i2c_gsbi7_wm8958_info),
 	},
 #endif
 	{

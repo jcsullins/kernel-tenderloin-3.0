@@ -207,6 +207,15 @@ static struct mfd_cell wm8994_regulator_devs[] = {
 	},
 };
 
+#if defined(CONFIG_MACH_TENDERLOIN) || defined(CONFIG_MACH_MSM8X60_OPAL)
+static int boardtype;
+int wm8994_get_boardtype(void)
+{
+	return boardtype;
+}
+EXPORT_SYMBOL_GPL(wm8994_get_boardtype);
+#endif
+
 static struct resource wm8994_codec_resources[] = {
 	{
 		.start = WM8994_IRQ_TEMP_SHUT,
@@ -238,6 +247,9 @@ static struct mfd_cell wm8994_devs[] = {
 	},
 };
 
+#if defined(CONFIG_MACH_TENDERLOIN)|| defined(CONFIG_MACH_MSM8X60_OPAL)
+
+#else
 /*
  * Supplies for the main bulk of CODEC; the LDO supplies are ignored
  * and should be handled via the standard regulator API supply
@@ -264,6 +276,7 @@ static const char *wm8958_main_supplies[] = {
 	"SPKVDD1",
 	"SPKVDD2",
 };
+#endif
 
 #ifdef CONFIG_PM
 static int wm8994_suspend(struct device *dev)
@@ -303,13 +316,15 @@ static int wm8994_suspend(struct device *dev)
 
 	wm8994->suspended = true;
 
+#if defined(CONFIG_MACH_TENDERLOIN)|| defined(CONFIG_MACH_MSM8X60_OPAL)
+#else
 	ret = regulator_bulk_disable(wm8994->num_supplies,
 				     wm8994->supplies);
 	if (ret != 0) {
 		dev_err(dev, "Failed to disable supplies: %d\n", ret);
 		return ret;
 	}
-
+#endif
 	return 0;
 }
 
@@ -322,13 +337,15 @@ static int wm8994_resume(struct device *dev)
 	if (!wm8994->suspended)
 		return 0;
 
+#if defined(CONFIG_MACH_TENDERLOIN)|| defined(CONFIG_MACH_MSM8X60_OPAL)
+#else
 	ret = regulator_bulk_enable(wm8994->num_supplies,
 				    wm8994->supplies);
 	if (ret != 0) {
 		dev_err(dev, "Failed to enable supplies: %d\n", ret);
 		return ret;
 	}
-
+#endif
 	ret = wm8994_write(wm8994, WM8994_INTERRUPT_STATUS_1_MASK,
 			   WM8994_NUM_IRQ_REGS * 2, &wm8994->irq_masks_cur);
 	if (ret < 0)
@@ -394,6 +411,19 @@ static int wm8994_device_init(struct wm8994 *wm8994, int irq)
 		goto err;
 	}
 
+#if defined(CONFIG_MACH_TENDERLOIN)|| defined(CONFIG_MACH_MSM8X60_OPAL)
+        {
+		dev_err(wm8994->dev, "wm8994 power setup A\n");
+                if ((pdata)&&(pdata->wm8994_setup))
+                        pdata->wm8994_setup();
+		 if ((pdata)&&(pdata->wm8994_get_boardtype))
+			boardtype = pdata->wm8994_get_boardtype();
+			
+		
+
+
+        }
+#else
 	switch (wm8994->type) {
 	case WM8994:
 		wm8994->num_supplies = ARRAY_SIZE(wm8994_main_supplies);
@@ -441,6 +471,7 @@ static int wm8994_device_init(struct wm8994 *wm8994, int irq)
 		dev_err(wm8994->dev, "Failed to enable supplies: %d\n", ret);
 		goto err_get;
 	}
+#endif
 
 	ret = wm8994_reg_read(wm8994, WM8994_SOFTWARE_RESET);
 	if (ret < 0) {
@@ -519,8 +550,11 @@ static int wm8994_device_init(struct wm8994 *wm8994, int irq)
 					WM8994_LDO1_DISCH, 0);
 	}
 
+#if defined(CONFIG_MACH_TENDERLOIN)|| defined(CONFIG_MACH_MSM8X60_OPAL)
+	// we do not use irq function here
+#else
 	wm8994_irq_init(wm8994);
-
+#endif
 	ret = mfd_add_devices(wm8994->dev, -1,
 			      wm8994_devs, ARRAY_SIZE(wm8994_devs),
 			      NULL, 0);
@@ -537,12 +571,21 @@ static int wm8994_device_init(struct wm8994 *wm8994, int irq)
 err_irq:
 	wm8994_irq_exit(wm8994);
 err_enable:
+#if defined(CONFIG_MACH_TENDERLOIN)|| defined(CONFIG_MACH_MSM8X60_OPAL)
+{
+	struct wm8994_pdata *pdata = wm8994->dev->platform_data;
+	if ((pdata)&&(pdata->wm8994_shutdown))
+		pdata->wm8994_shutdown();
+}
+
+#else
 	regulator_bulk_disable(wm8994->num_supplies,
 			       wm8994->supplies);
 err_get:
 	regulator_bulk_free(wm8994->num_supplies, wm8994->supplies);
 err_supplies:
 	kfree(wm8994->supplies);
+#endif
 err:
 	mfd_remove_devices(wm8994->dev);
 	kfree(wm8994);
@@ -554,10 +597,18 @@ static void wm8994_device_exit(struct wm8994 *wm8994)
 	pm_runtime_disable(wm8994->dev);
 	mfd_remove_devices(wm8994->dev);
 	wm8994_irq_exit(wm8994);
+#if defined(CONFIG_MACH_TENDERLOIN)|| defined(CONFIG_MACH_MSM8X60_OPAL)
+	{
+		struct wm8994_pdata *pdata = wm8994->dev->platform_data;
+		if ((pdata)&&(pdata->wm8994_shutdown))
+			pdata->wm8994_shutdown();
+	}
+#else
 	regulator_bulk_disable(wm8994->num_supplies,
 			       wm8994->supplies);
 	regulator_bulk_free(wm8994->num_supplies, wm8994->supplies);
 	kfree(wm8994->supplies);
+#endif
 	kfree(wm8994);
 }
 

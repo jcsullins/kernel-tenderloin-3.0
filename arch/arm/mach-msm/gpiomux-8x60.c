@@ -2300,13 +2300,13 @@ tenderloin_gpiomux_cfgs[] __initdata = {
 	{tenderloin_ctp_configs, ARRAY_SIZE(tenderloin_ctp_configs)},
 	{msm8x60_pmic_configs, ARRAY_SIZE(msm8x60_pmic_configs)},
 	{tenderloin_lcdc_configs, ARRAY_SIZE(tenderloin_lcdc_configs)},
+	{msm8x60_snd_configs, ARRAY_SIZE(msm8x60_snd_configs)},
+	{msm8x60_aux_pcm_configs, ARRAY_SIZE(msm8x60_aux_pcm_configs)},
 #if 0
 #if defined(CONFIG_USB_PEHCI_HCD) || defined(CONFIG_USB_PEHCI_HCD_MODULE)
 	{tenderloin_ebi2_configs, ARRAY_SIZE(tenderloin_ebi2_configs)},
 	{msm8x60_isp_usb_configs, ARRAY_SIZE(msm8x60_isp_usb_configs)},
 #endif
-	{msm8x60_aux_pcm_configs, ARRAY_SIZE(msm8x60_aux_pcm_configs)},
-	{msm8x60_snd_configs, ARRAY_SIZE(msm8x60_snd_configs)},
 #endif
 	{NULL, 0},
 };
