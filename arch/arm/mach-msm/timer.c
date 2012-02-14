@@ -274,6 +274,20 @@ static cycle_t msm_dgt_read(struct clocksource *cs)
 		clock_state->sleep_offset) >> clock->shift;
 }
 
+#ifdef CONFIG_HRES_COUNTER
+u32 msm_dgt_read_count(void)
+{
+        struct msm_clock *clock = &msm_clocks[MSM_CLOCK_DGT];
+        return msm_read_timer_count(clock, GLOBAL_TIMER);
+}
+
+u32 msm_dgt_convert_usec(u32 count)
+{
+        struct msm_clock *clock = &msm_clocks[MSM_CLOCK_DGT];
+        return count * 100 / (clock->freq/10000);
+}
+#endif
+
 static struct msm_clock *clockevent_to_clock(struct clock_event_device *evt)
 {
 	int i;
