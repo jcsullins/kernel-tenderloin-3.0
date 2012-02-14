@@ -353,7 +353,7 @@ static DEVICE_ATTR( channels, S_IRUGO | S_IWUSR, channels_show, channels_store);
 
 
 static void 
-hres_sysrq_show_evlog(int key, struct tty_struct *tty)
+hres_sysrq_show_evlog(int key)
 {
 	hres_evlog_print();
 }
@@ -384,7 +384,7 @@ static struct sysrq_key_op sysrq_show_log_op = {
 };
 
 static void 
-hres_sysrq_reset_evlog(int key, struct tty_struct *tty)
+hres_sysrq_reset_evlog(int key)
 {
 	hres_evlog_reset();
 }
@@ -541,7 +541,7 @@ hres_counter_resume ( struct platform_device *dev )
  *
  */
 
-static struct platform_driver hres_counter_driver = {
+static struct platform_driver hres_counter_driver_probe = {
 	.driver   = {
 		.name = "hres_counter",
 	},
@@ -554,7 +554,7 @@ static struct platform_driver hres_counter_driver = {
 static int __init  
 hres_counter_init(void) 
 { 
-	platform_driver_register ( &hres_counter_driver );
+	platform_driver_register ( &hres_counter_driver_probe );
 	return 0;
 } 
 
@@ -562,7 +562,7 @@ hres_counter_init(void)
 static void __exit 
 hres_counter_exit(void) 
 { 
-	platform_driver_unregister ( &hres_counter_driver );
+	platform_driver_unregister ( &hres_counter_driver_probe );
 	return;
 } 
  
