@@ -575,13 +575,13 @@ static int __init msm_peripheral_reset_init(void)
 		pil_modem_ops.auth_and_reset = reset_modem_trusted;
 		pil_modem_ops.shutdown = shutdown_modem_trusted;
 	}
-
+#ifndef CONFIG_MACH_TENDERLOIN
 	if (pas_supported(PAS_Q6) > 0) {
 		pil_q6_ops.init_image = init_image_q6_trusted;
 		pil_q6_ops.auth_and_reset = reset_q6_trusted;
 		pil_q6_ops.shutdown = shutdown_q6_trusted;
 	}
-
+#endif
 	if (pas_supported(PAS_DSPS) > 0) {
 		pil_dsps_ops.init_image = init_image_dsps_trusted;
 		pil_dsps_ops.auth_and_reset = reset_dsps_trusted;
