@@ -116,7 +116,71 @@
 #include <linux/ion.h>
 #include <mach/ion.h>
 
+// Pointer to wifi/3G pin arrays
+int *pin_table = NULL;
+
 void tenderloin_clock_fixup(void);
+
+enum topaz_board_types {
+	TOPAZ_PROTO = 0,
+	TOPAZ_PROTO2,
+	TOPAZ_EVT1,
+	TOPAZ_EVT2,
+	TOPAZ_EVT3,
+	TOPAZ_DVT,
+	TOPAZ_PVT,
+};
+enum topaz3g_board_types {
+	TOPAZ3G_PROTO = 0,
+	TOPAZ3G_EVT1,
+	TOPAZ3G_EVT2,
+	TOPAZ3G_EVT3,
+	TOPAZ3G_EVT4,
+	TOPAZ3G_DVT,
+	TOPAZ3G_PVT,
+};
+static bool board_is_topaz_3g_flag = false;
+static bool board_is_topaz_3g (void)
+{
+	return board_is_topaz_3g_flag;
+}
+static bool board_is_topaz_wifi_flag = true;
+static bool board_is_topaz_wifi (void)
+{
+	return board_is_topaz_wifi_flag;
+}
+enum opal_board_types {
+	OPAL_PROTO = 0,
+	OPAL_PROTO2,
+	OPAL_EVT1,
+	OPAL_EVT2,
+	OPAL_EVT3,
+	OPAL_DVT,
+	OPAL_PVT,
+};
+enum opal3g_board_types {
+	OPAL3G_PROTO = 0,
+	OPAL3G_PROTO2,
+	OPAL3G_EVT1,
+	OPAL3G_EVT2,
+	OPAL3G_EVT3,
+	OPAL3G_DVT,
+	OPAL3G_PVT,
+};
+
+static bool board_is_opal_3g_flag = false;
+static bool board_is_opal_3g (void)
+{
+	return board_is_opal_3g_flag;
+}
+static bool board_is_opal_wifi_flag = false;
+static bool board_is_opal_wifi (void)
+{
+	return board_is_opal_wifi_flag;
+}
+
+static u32 board_type = TOPAZ_PROTO;
+
 
 #define MSM_SHARED_RAM_PHYS 0x40000000
 #define MDM2AP_SYNC 129
@@ -4639,7 +4703,7 @@ static struct rpm_regulator_init_data rpm_regulator_init_data[] = {
 	RPM_LDO(PM8058_L7,  0, 1, 0, 1800000, 1800000,  LDO50HMIN),
 	RPM_LDO(PM8058_L8,  0, 1, 0, 2900000, 3050000, LDO300HMIN),
 	RPM_LDO(PM8058_L9,  0, 1, 0, 1800000, 1800000, LDO300HMIN),
-	RPM_LDO(PM8058_L10, 0, 1, 0, 3050000, 3050000, LDO300HMIN),
+	RPM_LDO(PM8058_L10, 1, 1, 0, 3050000, 3050000, LDO300HMIN),
 	RPM_LDO(PM8058_L11, 0, 1, 0, 2850000, 2850000, LDO150HMIN),
 	RPM_LDO(PM8058_L12, 0, 1, 0, 2900000, 2900000, LDO150HMIN),
 	RPM_LDO(PM8058_L13, 0, 1, 0, 2050000, 2050000, LDO300HMIN),
@@ -8157,7 +8221,8 @@ static void __init msm8x60_init_ebi2(void)
 
 		if (machine_is_msm8x60_surf() || machine_is_msm8x60_ffa() ||
 			machine_is_msm8x60_fluid() ||
-			machine_is_msm8x60_dragon())
+			machine_is_msm8x60_dragon() ||
+			machine_is_tenderloin())
 			ebi2_cfg |= (1 << 4) | (1 << 5); /* CS2, CS3 */
 		else if (machine_is_msm8x60_sim())
 			ebi2_cfg |= (1 << 4); /* CS2 */
@@ -8169,7 +8234,8 @@ static void __init msm8x60_init_ebi2(void)
 	}
 
 	if (machine_is_msm8x60_surf() || machine_is_msm8x60_ffa() ||
-	    machine_is_msm8x60_fluid() || machine_is_msm8x60_dragon()) {
+	    machine_is_msm8x60_fluid() || machine_is_msm8x60_dragon() ||
+		machine_is_tenderloin()) {
 		ebi2_cfg_ptr = ioremap_nocache(0x1a110000, SZ_4K);
 		if (ebi2_cfg_ptr != 0) {
 			/* EBI2_XMEM_CFG:PWRSAVE_MODE off */
@@ -8181,6 +8247,16 @@ static void __init msm8x60_init_ebi2(void)
 			 * 4 are the write delay. */
 			writel_relaxed(0x031F1C99, ebi2_cfg_ptr + 0x10);
 #if defined(CONFIG_USB_PEHCI_HCD) || defined(CONFIG_USB_PEHCI_HCD_MODULE)
+// HP Wade Wang: 
+			if (board_is_topaz_wifi())
+			{
+				/* EBI2 CS3 muxed address/data,
+				 * two cyc addr enable */
+				writel(0xA3030020, ebi2_cfg_ptr + 0x34);
+			}
+			else
+// End
+			{
 			/*
 			 * RECOVERY=5, HOLD_WR=1
 			 * INIT_LATENCY_WR=1, INIT_LATENCY_RD=1
@@ -8192,6 +8268,7 @@ static void __init msm8x60_init_ebi2(void)
 			 * ADV_OE_RECOVERY=0, ADDR_HOLD_ENA=1
 			 */
 			writel_relaxed(0x01000020, ebi2_cfg_ptr + 0x34);
+			}
 #else
 			/* EBI2 CS3 muxed address/data,
 			* two cyc addr enable */
@@ -8223,11 +8300,456 @@ static void __init msm8x60_configure_smc91x(void)
 	}
 }
 
+static uint32_t topazwifi_tlmm_cfgs[] = {
+    /* GSBI10 GSBI uart */
+	GPIO_CFG(71, 1, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+// yegw 2010-9-7 config gpio to GSBI function
+	/* GSBI10 QUP I2C */
+	GPIO_CFG(72, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(73, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+// yegw End
+#ifdef CONFIG_MFD_WM8958
+	/* mic detect gpio  */
+	GPIO_CFG(57, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	/* jack detect gpio */
+	GPIO_CFG(67, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	/* GSBI9 QUP I2C */
+	GPIO_CFG(59, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(60, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	/* WM8994 LDO ENABLE */
+	GPIO_CFG(66,  0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(108, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+#endif
+	GPIO_CFG(43, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(44, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+//michael - configure wlan necessary GPIOs at one shot
+// #if defined(CONFIG_AR6003) || defined(CONFIG_AR6003_MODULE)
+	/* AR6003_GPIO_HOST_WAKE_WL */
+	GPIO_CFG(AR6003_GPIO_HOST_WAKE_WL, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_8MA),
+	/* AR6003_GPIO_WL_IRQ */
+// 2011.2.28 HP Henry: remove it for h/w change	GPIO_CFG(AR6003_GPIO_WL_IRQ,  0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_8MA),
+	/* AR6003_GPIO_WL_HOST_WAKE */
+	GPIO_CFG(AR6003_GPIO_WL_HOST_WAKE,  0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_8MA),
+	/* AR6003_GPIO_WLAN_RST_N */
+	GPIO_CFG(AR6003_GPIO_WLAN_RST_N, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_8MA),
+// #endif
+	/* 5V Bias Enable */
+	GPIO_CFG(102, 0, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_16MA),
+	/*board id pins*/
+	GPIO_CFG(95, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(96, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(97, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(98, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(99, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(100, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+// HP Wade: For Key
+	GPIO_CFG(40, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA),
+	GPIO_CFG(103, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA),
+	GPIO_CFG(104, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA),
+// End
+};
+
+static uint32_t topaz3g_tlmm_cfgs[] = {
+	/* GSBI10 GSBI uart */
+	GPIO_CFG(71, 1, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	// yegw 2010-9-7 config gpio to GSBI function
+	/* GSBI10 QUP I2C */
+	GPIO_CFG(72, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(73, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	// yegw End
+#ifdef CONFIG_MFD_WM8958
+	/* mic detect gpio  */
+	GPIO_CFG(57, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	/* jack detect gpio */
+	GPIO_CFG(67, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	/* GSBI9 QUP I2C */
+	GPIO_CFG(59, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(60, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	/* WM8994 LDO ENABLE */
+	GPIO_CFG(66,  0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(108, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+#endif
+	GPIO_CFG(43, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(44, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+//michael - configure wlan necessary GPIOs at one shot
+// #if defined(CONFIG_AR6003) || defined(CONFIG_AR6003_MODULE)
+	/* AR6003_GPIO_HOST_WAKE_WL */
+	GPIO_CFG(AR6003_GPIO_HOST_WAKE_WL_TOPAZ_3G, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_8MA),
+	/* AR6003_GPIO_WL_IRQ */
+// 2011.2.28 HP Henry: remove it for h/w change		GPIO_CFG(AR6003_GPIO_WL_IRQ_TOPAZ_3G,  0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_8MA),
+	/* AR6003_GPIO_WL_HOST_WAKE */
+	GPIO_CFG(AR6003_GPIO_WL_HOST_WAKE_TOPAZ_3G,  0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_8MA),
+	/* AR6003_GPIO_WLAN_RST_N */
+	GPIO_CFG(AR6003_GPIO_WLAN_RST_N_TOPAZ_3G, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_8MA),
+// #endif
+	/* 5V Bias Enable */
+	GPIO_CFG(102, 0, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_16MA),
+	/*board id pins*/
+	GPIO_CFG(95, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(96, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(97, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(98, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(99, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(100, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+// HP Wade: For Key
+	GPIO_CFG(40, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA),
+// End
+	//HP zhanghong:Dec 21 11:56 CST 2010, begin
+	//the two gpios are for proximity sensor firmware download
+	GPIO_CFG(83, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(46, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	//End
+	//HP_Effie, QUP5_SPI for lcd, Start
+	GPIO_CFG(49, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(51, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(52, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	//HP_Effie, QUP5_SPI for lcd, End
+};
+
+static uint32_t opal_tlmm_cfgs[] = {
+	/* GSBI10 GSBI uart */
+	GPIO_CFG(71, 1, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	// yegw 2010-9-7 config gpio to GSBI function
+	/* GSBI10 QUP I2C */
+	GPIO_CFG(72, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(73, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	// yegw End
+#ifdef CONFIG_MFD_WM8958
+	/* mic detect gpio  */
+	GPIO_CFG(57, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	/* jack detect gpio */
+	GPIO_CFG(67, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	/* GSBI9 QUP I2C */
+	GPIO_CFG(59, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(60, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	/* WM8994 LDO ENABLE */
+	GPIO_CFG(66,  0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(108, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+#endif
+	GPIO_CFG(43, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(44, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+//michael - configure wlan necessary GPIOs at one shot
+// #if defined(CONFIG_AR6003) || defined(CONFIG_AR6003_MODULE)
+	/* AR6003_GPIO_HOST_WAKE_WL */
+	GPIO_CFG(AR6003_GPIO_HOST_WAKE_WL_OPAL_3G, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_8MA),
+	/* AR6003_GPIO_WL_IRQ */
+// 2011.2.28 HP Henry: remove it for h/w change		GPIO_CFG(AR6003_GPIO_WL_IRQ_OPAL_3G,  0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_8MA),
+	/* AR6003_GPIO_WL_HOST_WAKE */
+	GPIO_CFG(AR6003_GPIO_WL_HOST_WAKE_OPAL_3G,  0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_8MA),
+	/* AR6003_GPIO_WLAN_RST_N */
+	GPIO_CFG(AR6003_GPIO_WLAN_RST_N_OPAL_3G, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_8MA),
+// #endif
+	/* 5V Bias Enable */
+	GPIO_CFG(102, 0, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_16MA),
+	/*board id pins*/
+	GPIO_CFG(95, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(96, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(97, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(98, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(99, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(100, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+// HP Wade: For Key
+	GPIO_CFG(40, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA),
+// End
+	//HP zhanghong:Dec 21 11:56 CST 2010, begin
+	//the two gpios are for proximity sensor firmware download
+	GPIO_CFG(83, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	GPIO_CFG(46, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	//End	
+	//HP_Effie, QUP5_SPI for lcd, Start
+	GPIO_CFG(49, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(51, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(52, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	//HP_Effie, QUP5_SPI for lcd, End
+};
+
+/* HP SamLin 20110104, start for boradcom gps module 4751 uart port (gsbi 11) */
+static uint32_t brcm4751_uartdm_tlmm_cfgs[] = {
+	GPIO_CFG(103, 2, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(104, 2, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(105, 2, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(106, 2, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+};
+/* End */
+static uint32_t gsbi9_i2c_cfgs[] = {
+	GPIO_CFG(68, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+	GPIO_CFG(69, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA),
+};
+
 static void __init msm8x60_init_tlmm(void)
 {
+	unsigned n;
+
 	if (machine_is_msm8x60_rumi3())
 		msm_gpio_install_direct_irq(0, 0, 1);
+	else if(machine_is_tenderloin() || machine_is_opal()){
+		if (board_is_topaz_wifi()) {
+			for (n = 0; n < ARRAY_SIZE(topazwifi_tlmm_cfgs); ++n)
+				gpio_tlmm_config(topazwifi_tlmm_cfgs[n], 0);
+		} else if (board_is_topaz_3g() || board_is_opal_3g() || board_is_opal_wifi()) {
+			for (n = 0; n < ARRAY_SIZE(topaz3g_tlmm_cfgs); ++n)
+				gpio_tlmm_config(topaz3g_tlmm_cfgs[n], 0);
+			/* HP SamLin 20110104, start for boradcom gps module 4751 uart port (gsbi 11) */
+			if (board_is_opal_3g() || board_is_opal_wifi()) {
+				for (n = 0; n < ARRAY_SIZE(brcm4751_uartdm_tlmm_cfgs); ++n)
+					gpio_tlmm_config(brcm4751_uartdm_tlmm_cfgs[n], 0);
+			}
+			/* End */
+			if ((board_is_topaz_3g() && (board_type > TOPAZ3G_DVT))
+				||(board_is_opal_3g() && (board_type > OPAL3G_EVT1)))
+			{
+				for(n =0; n < ARRAY_SIZE(gsbi9_i2c_cfgs); ++n)
+					gpio_tlmm_config(gsbi9_i2c_cfgs[n], 0);
+			}
+		} else if (machine_is_opal()) {
+			for (n = 0; n < ARRAY_SIZE(opal_tlmm_cfgs); ++n)
+				gpio_tlmm_config(opal_tlmm_cfgs[n], 0);
+		} else {
+			for (n = 0; n < ARRAY_SIZE(topazwifi_tlmm_cfgs); ++n)
+				gpio_tlmm_config(topazwifi_tlmm_cfgs[n], 0);
+		}
+	}
 }
+
+/*WLAN*/
+
+#define WLAN_1V8_SDIO_ACT_LOAD  80000
+#define WLAN_1V8_SDIO_MIN_LOAD  10000
+
+static int tenderloin_wifi_power(int on)
+{
+	static struct regulator * wifi_S3A_1V8  = NULL;
+	static struct regulator * wifi_L1B_3V3  = NULL;
+	static struct regulator * wifi_L3B_3V3  = NULL;
+	static struct regulator * wifi_L19A_1V8 = NULL;
+	static int wifi_is_on = 0;
+	static int rc = -EINVAL; /* remember if the gpio_requests succeeded */
+	int gpios[] = {
+			TENDERLOIN_GPIO_WL_HOST_WAKE,
+			pin_table[TENDERLOIN_GPIO_HOST_WAKE_WL_PIN],
+			pin_table[TENDERLOIN_GPIO_WLAN_RST_N_PIN]
+		};
+
+	// "8901_l3"  - 3.3V - VREG_L3B_3V3      - WLAN_PA_3V3
+	// "8901_l1"  - 3.3V - VREG_L1B_3V3      - VDD_WLAN_3V3
+	// "8058_l19" - 1.8V - VREG_L19A_1V8     - VDD_1.8
+	// "8058_s3"  - 1.8V - VREG_S3A_1V8_WLAN - DVDD_SDIO_1V8 etc.
+
+	if (!wifi_S3A_1V8) {
+		// Always on
+		wifi_S3A_1V8 = regulator_get(NULL, "8058_s3");
+		if (IS_ERR(wifi_S3A_1V8)) {
+			pr_err("%s: unable to get %s\n",
+				__func__, "8058_s3");
+		}
+		if(regulator_set_voltage(wifi_S3A_1V8, 1800000, 1800000)){
+			pr_err("%s: unable to set voltage for %s\n",
+				__func__, "8058_s3");
+		}
+		if (regulator_enable(wifi_S3A_1V8)){
+			pr_err("%s: Unable to enable %s\n",
+				 __func__, "8058_s3");
+		}
+	}
+
+	if (!wifi_L3B_3V3) {
+		wifi_L3B_3V3 = regulator_get(NULL, "8901_l3");
+		if (IS_ERR(wifi_L3B_3V3)) {
+			pr_err("%s: unable to get %s\n",
+				__func__, "8901_l3");
+		}
+		if (regulator_set_voltage(wifi_L3B_3V3, 3300000, 3300000)) {
+			pr_err("%s: unable to set voltage for %s\n",
+				__func__, "8901_l3");
+		}
+	}
+
+	if (!wifi_L1B_3V3) {
+		wifi_L1B_3V3 = regulator_get(NULL, "8901_l1");
+		if (IS_ERR(wifi_L1B_3V3)) {
+			pr_err("%s: unable to get %s\n",
+				__func__, "8901_l1");
+		}
+		if (regulator_set_voltage(wifi_L1B_3V3, 3300000, 3300000)) {
+			pr_err("%s: unable to set voltage for %s\n",
+				__func__, "8901_l3");
+		}
+	}
+
+	if (!wifi_L19A_1V8) {
+		wifi_L19A_1V8 = regulator_get(NULL, "8058_l19");
+		if (IS_ERR(wifi_L19A_1V8)) {
+			pr_err("%s: unable to get %s\n",
+				__func__, "8058_l19");
+		}
+		if (regulator_set_voltage(wifi_L19A_1V8, 1800000, 1800000)) {
+			pr_err("%s: unable to set voltage for %s\n",
+				__func__, "8058_l19");
+		}
+	}
+
+	BUG_ON(!wifi_L3B_3V3);
+	BUG_ON(!wifi_L1B_3V3);
+	BUG_ON(!wifi_L19A_1V8);
+	BUG_ON(!wifi_S3A_1V8);
+
+	if (on) {
+		//
+		// B. enable power
+		// 3.3V -> 1.8V -> wait (Tb 5) -> CHIP_PWD
+
+		pr_info("wifi_power(%d) 1.8V sdio: set load\n", on);
+		rc = regulator_set_optimum_mode(wifi_S3A_1V8,
+			WLAN_1V8_SDIO_ACT_LOAD);
+		if (rc < 0) {
+			pr_err("%s: Unable (%d) to set opt load for %s\n",
+				 __func__, rc, "8058_s3");
+		} else {
+			pr_info("%s: New regulator mode for %s: %d\n",
+				 __func__, "8058_s3", rc );
+		}
+
+		pr_info("wifi_power(%d) 3.3V\n", on);
+		rc = regulator_enable(wifi_L3B_3V3);
+		if (rc) {
+			pr_err("%s: Unable (%d) to enable %s\n",
+				 __func__, rc, "8901_l3");
+		}
+
+		pr_info("wifi_power(%d) 8901_l1 3.3V\n", on);
+		rc = regulator_enable(wifi_L1B_3V3);
+		if (rc) {
+			pr_err("%s: Unable (%d) to enable %s\n",
+				 __func__, rc, "8901_l1");
+		}
+
+		pr_info("wifi_power(%d) 8058_l19 1.8V\n", on);
+		rc = regulator_enable(wifi_L19A_1V8);
+		if (rc) {
+			pr_err("%s: Unable (%d) to enable %s\n",
+				 __func__, rc, "8058_l19");
+		}
+
+		printk("wifi_power(%d) CHIP_PWD\n", on);
+		mdelay(5);
+
+		/* request gpio if not yet done */
+		printk(KERN_ERR "wifi_is_on(%d)\n", wifi_is_on);
+		if (!wifi_is_on) {
+			rc = configure_gpiomux_gpios(on, gpios, ARRAY_SIZE(gpios));
+			if (rc) {
+				pr_err("%s: gpio request failed\n", __func__);
+				return -EINVAL;
+			}
+		}
+
+		// gpio_direction_output(pin_table[TENDERLOIN_GPIO_WLAN_RST_N_PIN], 0);
+		gpio_set_value(pin_table[TENDERLOIN_GPIO_WLAN_RST_N_PIN], 0);
+		mdelay(5);
+		// gpio_direction_output(pin_table[TENDERLOIN_GPIO_WLAN_RST_N_PIN], 1);
+		gpio_set_value(pin_table[TENDERLOIN_GPIO_WLAN_RST_N_PIN], 1);
+	}
+	else
+	{
+		//CHIP_PWD -> wait (Tc 5)
+		printk(KERN_ERR "%s: MARK 3\n", __func__);
+		// gpio_direction_output(pin_table[TENDERLOIN_GPIO_WLAN_RST_N_PIN], 0);
+		gpio_set_value(pin_table[TENDERLOIN_GPIO_WLAN_RST_N_PIN], 0);
+		mdelay(5);
+
+		if (wifi_is_on) {
+			rc = configure_gpiomux_gpios(on, gpios, ARRAY_SIZE(gpios));
+		}
+
+		rc = regulator_disable(wifi_L3B_3V3);
+		if (rc) {
+			pr_err("%s: Unable (%d) to disable %s\n",
+				__func__, rc, "8901_l3");
+		}
+
+		rc = regulator_disable(wifi_L1B_3V3);
+		if (rc) {
+			pr_err("%s: Unable (%d) to disable %s\n",
+				__func__, rc, "8901_l1");
+		}
+
+		rc = regulator_disable(wifi_L19A_1V8);
+		if (rc) {
+			pr_err("%s: Unable (%d) to disable %s\n",
+				__func__, rc, "8058_l19");
+		}
+
+		rc = regulator_set_optimum_mode(wifi_S3A_1V8,
+			WLAN_1V8_SDIO_MIN_LOAD);
+		if (rc < 0) {
+			pr_err("%s: Unable (%d) to set opt load for %s\n",
+				 __func__, rc, "8058_s3");
+		} else {
+			pr_info("%s: New regulator mode for %s: %d\n",
+				 __func__, "8058_s3", rc );
+		}
+	}
+
+	wifi_is_on = on;
+	return 0;
+}
+
+static struct mmc_host *wifi_mmc;
+int board_sdio_wifi_enable(unsigned int param);
+int board_sdio_wifi_disable(unsigned int param);
+
+static void tenderloin_probe_wifi(int id, struct mmc_host *mmc)
+{
+	printk("%s: id %d mmc %p\n", __PRETTY_FUNCTION__, id, mmc);
+	wifi_mmc = mmc;
+
+       //TODO: hook up to PM later
+//       board_sdio_wifi_enable(0);
+}
+
+static void tenderloin_remove_wifi(int id, struct mmc_host *mmc)
+{
+	printk("%s: id %d mmc %p\n", __PRETTY_FUNCTION__, id, mmc);
+	wifi_mmc = NULL;
+
+       //TODO: hook up to PM later
+//       board_sdio_wifi_disable(0);
+}
+
+/*
+ *  An API to enable wifi
+ */
+int board_sdio_wifi_enable(unsigned int param)
+{
+	printk(KERN_ERR "board_sdio_wifi_enable\n");
+
+	tenderloin_wifi_power(1);
+	if (wifi_mmc) {
+		mmc_detect_change(wifi_mmc, msecs_to_jiffies(250));
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(board_sdio_wifi_enable);
+
+/*
+ *  An API to disable wifi
+ */
+int board_sdio_wifi_disable(unsigned int param)
+{
+	printk(KERN_ERR "board_sdio_wifi_disable\n");
+
+	tenderloin_wifi_power(0);
+
+	if (wifi_mmc) {
+		mmc_detect_change(wifi_mmc, msecs_to_jiffies(100));
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(board_sdio_wifi_disable);
+
+
 
 #if (defined(CONFIG_MMC_MSM_SDC1_SUPPORT)\
 	|| defined(CONFIG_MMC_MSM_SDC2_SUPPORT)\
@@ -8339,14 +8861,14 @@ static struct msm_sdcc_pad_pull_cfg sdc4_pad_on_pull_cfg[] = {
 };
 
 static struct msm_sdcc_pad_drv_cfg sdc4_pad_off_drv_cfg[] = {
-	{TLMM_HDRV_SDC4_CLK, GPIO_CFG_2MA},
-	{TLMM_HDRV_SDC4_CMD, GPIO_CFG_2MA},
-	{TLMM_HDRV_SDC4_DATA, GPIO_CFG_2MA}
+	{TLMM_HDRV_SDC4_CLK, GPIO_CFG_8MA},
+	{TLMM_HDRV_SDC4_CMD, GPIO_CFG_8MA},
+	{TLMM_HDRV_SDC4_DATA, GPIO_CFG_8MA}
 };
 
 static struct msm_sdcc_pad_pull_cfg sdc4_pad_off_pull_cfg[] = {
-	{TLMM_PULL_SDC4_CMD, GPIO_CFG_PULL_DOWN},
-	{TLMM_PULL_SDC4_DATA, GPIO_CFG_PULL_DOWN}
+	{TLMM_PULL_SDC4_CMD, GPIO_CFG_PULL_UP},
+	{TLMM_PULL_SDC4_DATA, GPIO_CFG_PULL_UP}
 };
 #endif
 
@@ -8492,41 +9014,21 @@ static int msm_sdcc_setup_pad(int dev_id, unsigned int enable)
 		 * pull config for pads
 		 */
 		for (n = 0; n < curr->pad_drv_data_size; n++) {
-			if (curr->sdio_lpm_gpio_cfg) {
-				if (curr->pad_drv_on_data[n].drv ==
-						TLMM_HDRV_SDC4_DATA)
-					continue;
-			}
 			msm_tlmm_set_hdrive(curr->pad_drv_on_data[n].drv,
 				curr->pad_drv_on_data[n].drv_val);
 		}
 		for (n = 0; n < curr->pad_pull_data_size; n++) {
-			if (curr->sdio_lpm_gpio_cfg) {
-				if (curr->pad_pull_on_data[n].pull ==
-						TLMM_PULL_SDC4_DATA)
-					continue;
-			}
 			msm_tlmm_set_pull(curr->pad_pull_on_data[n].pull,
 				curr->pad_pull_on_data[n].pull_val);
 		}
 	} else {
 		/* set the low power config for pads */
 		for (n = 0; n < curr->pad_drv_data_size; n++) {
-			if (curr->sdio_lpm_gpio_cfg) {
-				if (curr->pad_drv_off_data[n].drv ==
-						TLMM_HDRV_SDC4_DATA)
-					continue;
-			}
 			msm_tlmm_set_hdrive(
 				curr->pad_drv_off_data[n].drv,
 				curr->pad_drv_off_data[n].drv_val);
 		}
 		for (n = 0; n < curr->pad_pull_data_size; n++) {
-			if (curr->sdio_lpm_gpio_cfg) {
-				if (curr->pad_pull_off_data[n].pull ==
-						TLMM_PULL_SDC4_DATA)
-					continue;
-			}
 			msm_tlmm_set_pull(
 				curr->pad_pull_off_data[n].pull,
 				curr->pad_pull_off_data[n].pull_val);
@@ -9070,10 +9572,13 @@ static struct mmc_platform_data msm8x60_sdc4_data = {
 	.ocr_mask       = MMC_VDD_27_28 | MMC_VDD_28_29,
 	.translate_vdd  = msm_sdcc_setup_power,
 	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
+	.board_probe	= tenderloin_probe_wifi,
+	.board_remove	= tenderloin_remove_wifi,
+	/* .dummy52_required = 1, */
 	.msmsdcc_fmin	= 400000,
 	.msmsdcc_fmid	= 24000000,
 	.msmsdcc_fmax	= 48000000,
-	.nonremovable	= 0,
+	/* .nonremovable	= 1, */
 	.pclk_src_dfab  = 1,
 	.cfg_mpm_sdiowakeup = msm_sdcc_cfg_mpm_sdiowakeup,
 };
@@ -10975,97 +11480,117 @@ void msm_fusion_setup_pinctrl(void)
 	}
 }
 
-enum topaz_board_types {
-	TOPAZ_UNKNOWN = 0,
-	TOPAZ_PROTO,
-	TOPAZ_PROTO2,
-	TOPAZ_EVT1,
-	TOPAZ_EVT2,
-	TOPAZ_EVT3,
-	TOPAZ_DVT,
-	TOPAZ_PVT,
-	TOPAZ_3G_PROTO,
-	TOPAZ_3G_PROTO2,
-	TOPAZ_3G_EVT1,
-	TOPAZ_3G_EVT2,
-	TOPAZ_3G_EVT3,
-	TOPAZ_3G_EVT4,
-	TOPAZ_3G_DVT,
-	TOPAZ_3G_PVT
-};
-
-static u32 board_type = TOPAZ_EVT1; /* In case we get a lazy bootloader */
-
-static struct {
-	enum topaz_board_types type;
-	const char *str;
-} topaz_boardtype_tbl[] = {
-	/* WiFi */
-	{TOPAZ_PROTO,    "topaz-Wifi-proto"},
-	{TOPAZ_PROTO2,   "topaz-Wifi-proto2"},
-	{TOPAZ_EVT1,     "topaz-Wifi-evt1"},
-	{TOPAZ_EVT2,     "topaz-Wifi-evt2"},
-	{TOPAZ_EVT3,     "topaz-Wifi-evt3"},
-	{TOPAZ_DVT,      "topaz-Wifi-dvt"},
-	{TOPAZ_PVT,      "topaz-Wifi-pvt"},
-
-	/* 3G */
-	{TOPAZ_3G_PROTO,    "topaz-3G-proto"},
-	{TOPAZ_3G_PROTO2,   "topaz-3G-proto2"},
-	{TOPAZ_3G_EVT1,     "topaz-3G-evt1"},
-	{TOPAZ_3G_EVT2,     "topaz-3G-evt2"},
-	{TOPAZ_3G_EVT3,     "topaz-3G-evt3"},
-	{TOPAZ_3G_EVT4,     "topaz-3G-evt4"},
-	{TOPAZ_3G_DVT,      "topaz-3G-dvt"},
-	{TOPAZ_3G_PVT,      "topaz-3G-pvt"},
-
-	/* TODO: Non-standard board strings, to be removed once all copies of
-	 * bootie in the wild are updated to use the above format */
-
-	/* WiFi */
-	{TOPAZ_PROTO,    "topaz-1stbuild-Wifi"},
-	{TOPAZ_PROTO2,   "topaz-2ndbuild-Wifi"},
-	{TOPAZ_EVT1,     "topaz-3rdbuild-Wifi"},
-	{TOPAZ_EVT2,     "topaz-4thbuild-Wifi"},
-	{TOPAZ_EVT3,     "topaz-5thbuild-Wifi"},
-	{TOPAZ_DVT,      "topaz-6thbuild-Wifi"},
-	{TOPAZ_PVT,      "topaz-7thbuild-Wifi"},
-	{TOPAZ_PVT,      "topaz-pvt-Wifi"},
-
-	/* 3G */
-	{TOPAZ_3G_PROTO,    "topaz-1stbuild-3G"},
-	{TOPAZ_3G_PROTO2,   "topaz-2ndbuild-3G"},
-	{TOPAZ_3G_EVT1,     "topaz-3rdbuild-3G"},
-	{TOPAZ_3G_EVT2,     "topaz-4thbuild-3G"},
-	{TOPAZ_3G_EVT3,     "topaz-5thbuild-3G"},
-	{TOPAZ_3G_DVT,      "topaz-6thbuild-3G"},
-	{TOPAZ_3G_PVT,      "topaz-7thbuild-3G"},
-	{TOPAZ_3G_PVT,      "topaz-pvt-3G"}
-};
-
 static int __init boardtype_setup(char *boardtype_str)
 {
-	int i;
-
-	if (machine_is_tenderloin()) {
-		for (i = 0; i < ARRAY_SIZE(topaz_boardtype_tbl); i++)
-			if (!strcmp(boardtype_str, topaz_boardtype_tbl[i].str))
-				board_type = topaz_boardtype_tbl[i].type;
-	}
+	board_is_topaz_wifi_flag = false;
+	board_is_topaz_3g_flag = false;
+	board_is_opal_3g_flag = false;
+	board_is_opal_wifi_flag = false;
+	if (!strcmp(boardtype_str, "topaz-1stbuild-Wifi")) {
+		board_type = TOPAZ_PROTO;
+		board_is_topaz_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "topaz-2ndbuild-Wifi")) {
+		board_type = TOPAZ_PROTO2;
+		board_is_topaz_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "topaz-3rdbuild-Wifi")) {
+		board_type = TOPAZ_EVT1;
+		board_is_topaz_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "topaz-4thbuild-Wifi")) {
+		board_type = TOPAZ_EVT2;
+		board_is_topaz_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "topaz-5thbuild-Wifi")) {
+		board_type = TOPAZ_EVT3;
+		board_is_topaz_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "topaz-6thbuild-Wifi")) {
+		board_type = TOPAZ_DVT;
+		board_is_topaz_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "topaz-7thbuild-Wifi")) {
+		board_type = TOPAZ_PVT;
+		board_is_topaz_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "topaz-pvt-Wifi")) {
+		board_type = TOPAZ_PVT;
+		board_is_topaz_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "topaz-1stbuild-3G")) {
+		board_type = TOPAZ3G_PROTO;
+		board_is_topaz_3g_flag	= true;
+	} else if (!strcmp(boardtype_str, "topaz-2ndbuild-3G")) {
+		board_type = TOPAZ3G_EVT1;
+		board_is_topaz_3g_flag	= true;
+	} else if (!strcmp(boardtype_str, "topaz-3rdbuild-3G")) {
+		board_type = TOPAZ3G_EVT2;
+		board_is_topaz_3g_flag	= true;
+	} else if (!strcmp(boardtype_str, "topaz-4thbuild-3G")) {
+		board_type = TOPAZ3G_EVT3;
+		board_is_topaz_3g_flag	= true;
+	} else if (!strcmp(boardtype_str, "topaz-5thbuild-3G")) {
+		board_type = TOPAZ3G_DVT;
+		board_is_topaz_3g_flag	= true;
+	} else if (!strcmp(boardtype_str, "topaz-6thbuild-3G")) {
+		board_type = TOPAZ3G_PVT;
+		board_is_topaz_3g_flag	= true;
+	} else if (!strcmp(boardtype_str, "topaz-7thbuild-3G")) {
+		board_type = TOPAZ3G_PVT;
+		board_is_topaz_3g_flag	= true;
+	} else if (!strcmp(boardtype_str, "topaz-pvt-3G")) {
+		board_type = TOPAZ3G_PVT;
+		board_is_topaz_3g_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-1stbuild-Wifi")) {
+		board_type = OPAL_PROTO;
+		board_is_opal_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-2ndbuild-Wifi")) {
+		board_type = OPAL_PROTO2;
+		board_is_opal_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-3rdbuild-Wifi")) {
+		board_type = OPAL_EVT1;
+		board_is_opal_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-4thbuild-Wifi")) {
+		board_type = OPAL_EVT2;
+		board_is_opal_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-5thbuild-Wifi")) {
+		board_type = OPAL_EVT3;
+		board_is_opal_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-6thbuild-Wifi")) {
+		board_type = OPAL_DVT;
+		board_is_opal_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-7thbuild-Wifi")) {
+		board_type = OPAL_PVT;
+		board_is_opal_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-pvt-Wifi")) {
+		board_type = OPAL_PVT;
+		board_is_opal_wifi_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-1stbuild-3G")) {
+		board_type = OPAL3G_PROTO;
+		board_is_opal_3g_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-2ndbuild-3G")) {
+		board_type = OPAL3G_PROTO2;
+		board_is_opal_3g_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-3rdbuild-3G")) {
+		board_type = OPAL3G_EVT1;
+		board_is_opal_3g_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-4thbuild-3G")) {
+		board_type = OPAL3G_EVT2;
+		board_is_opal_3g_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-5thbuild-3G")) {
+		board_type = OPAL3G_EVT3;
+		board_is_opal_3g_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-6thbuild-3G")) {
+		board_type = OPAL3G_DVT;
+		board_is_opal_3g_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-7thbuild-3G")) {
+		board_type = OPAL3G_PVT;
+		board_is_opal_3g_flag	= true;
+	} else if (!strcmp(boardtype_str, "opal-pvt-3G")) {
+		board_type = OPAL3G_PVT;
+		board_is_opal_3g_flag	= true;
+	} else {
+		board_type = TOPAZ_PROTO;
+		board_is_topaz_wifi_flag = true;
+ 	}
+	printk("%s(%d) : str = %s\n", __func__, __LINE__, boardtype_str);
 
 	return 0;
 }
 __setup("boardtype=", boardtype_setup);
-
-// Pointer to wifi/3G pin arrays
-int *pin_table = NULL;
-
-static u8 boardtype_is_3g(void) {
-	if (machine_is_tenderloin() && board_type >= TOPAZ_3G_PROTO) {
-		return 1;
-	}
-	return 0;
-}
 
 
 #define TENDERLOIN_CLOCK_FIXUP 0 // TODO
@@ -11081,11 +11606,11 @@ uint32_t fixup_clk_num = ARRAY_SIZE(fixup_clk_ids);
 
 static void __init tenderloin_setup_pin_table(void)
 {
-	if(boardtype_is_3g()) {
+	if(board_is_topaz_3g()) {
 		printk("Choosing tenderloin_pins_3g\n");
-		if (board_type >= TOPAZ_3G_DVT) {
+		if (board_type >= TOPAZ3G_DVT) {
 			pin_table = &tenderloin_pins_3g_dvt[0];
-		} else if (board_type == TOPAZ_3G_EVT4) {
+		} else if (board_type == TOPAZ3G_EVT4) {
 			pin_table = &tenderloin_pins_3g_evt4[0];
 		} else {
 			pin_table = &tenderloin_pins_3g[0];
@@ -11320,7 +11845,8 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 			machine_is_msm8x60_rumi3() ||
 			machine_is_msm8x60_sim() ||
 			machine_is_msm8x60_fluid() ||
-			machine_is_msm8x60_dragon())
+			machine_is_msm8x60_dragon() ||
+			machine_is_tenderloin())
 		msm8x60_init_ebi2();
 	msm8x60_init_tlmm();
 	if (!machine_is_tenderloin()) {
