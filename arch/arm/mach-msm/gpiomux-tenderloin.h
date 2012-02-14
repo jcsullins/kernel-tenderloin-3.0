@@ -358,4 +358,20 @@ static int tenderloin_pins_3g_dvt [] = {
 	[TENDERLOIN_GPIO_3G_3V3_EN] = GPIO_3G_3V3_EN_DVT,
 };
 
+// for Topaz Wifi only
+#define AR6003_GPIO_WL_HOST_WAKE		93		// input
+// 2011.2.28 HP Henry: remove it for h/w change #define	AR6003_GPIO_WL_IRQ			94		// input
+#define AR6003_GPIO_HOST_WAKE_WL		137		// output
+#define AR6003_GPIO_WLAN_RST_N		135		// output
+// for Topaz 3G
+#define AR6003_GPIO_WL_HOST_WAKE_TOPAZ_3G	93		// input
+// 2011.2.28 HP Henry: remove it for h/w change #define	AR6003_GPIO_WL_IRQ_TOPAZ_3G			94		// input
+#define AR6003_GPIO_HOST_WAKE_WL_TOPAZ_3G	80		// output
+#define AR6003_GPIO_WLAN_RST_N_TOPAZ_3G		28		// output
+// for Opal 3G
+#define AR6003_GPIO_WL_HOST_WAKE_OPAL_3G	93		// input
+// 2011.2.28 HP Henry: remove it for h/w change #define	AR6003_GPIO_WL_IRQ_OPAL_3G			94		// input
+#define AR6003_GPIO_HOST_WAKE_WL_OPAL_3G	80		// output
+#define AR6003_GPIO_WLAN_RST_N_OPAL_3G		28		// output
+
 #endif
