@@ -2884,7 +2884,7 @@ err0:
 	return 0;
 }
 
-static int a6_ioctl(struct inode * inode, struct file *file,
+static long a6_ioctl(struct file *file,
                          unsigned int cmd, unsigned long args)
 {
 	int32_t rc = 0;
@@ -3395,7 +3395,7 @@ struct file_operations a6_fops = {
 	.read    = a6_read,
 	.write    = a6_write,
 	.poll    = a6_poll,
-	.ioctl   = a6_ioctl,
+	.compat_ioctl   = a6_ioctl,
 	.open    = a6_open,
 	.release = a6_close,
 };
