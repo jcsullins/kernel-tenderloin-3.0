@@ -692,6 +692,7 @@ static enum power_supply_property a6_battery_props[] = {
         POWER_SUPPLY_PROP_HEALTH,
         POWER_SUPPLY_PROP_TECHNOLOGY,
         POWER_SUPPLY_PROP_PRESENT,
+        POWER_SUPPLY_PROP_CURRENT_NOW,
 };
 static void a6_battery_ext_power_changed(struct power_supply *psy)
 {
@@ -715,6 +716,8 @@ static int a6_battery_get_property(struct power_supply *psy,
 
 	int status, ret = 0;
 	bool charger_is_charging = false, charger_is_connecting = false;
+
+	battery_read(&battery_info);
 	
 	switch (prop) {
 	case POWER_SUPPLY_PROP_STATUS:
@@ -765,6 +768,9 @@ static int a6_battery_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
 		val->intval = battery_info.present;
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_NOW:
+		val->intval = battery_info.current;
 		break;
 	default:
 		ret = -EINVAL;
