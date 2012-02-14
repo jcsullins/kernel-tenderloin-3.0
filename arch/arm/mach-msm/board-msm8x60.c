@@ -114,28 +114,46 @@
 #include <linux/ion.h>
 #include <mach/ion.h>
 
-// Pointer to wifi/3G pin arrays
+// Pointer to topaz/tenderloin opal/shortloin wifi/3G pin arrays
 int *pin_table = NULL;
 
 void tenderloin_clock_fixup(void);
 
 enum topaz_board_types {
-	TOPAZ_PROTO = 0,
+	TOPAZ_BOARD_UNKNOWN = 0,
+	TOPAZ_PROTO,
 	TOPAZ_PROTO2,
 	TOPAZ_EVT1,
 	TOPAZ_EVT2,
 	TOPAZ_EVT3,
 	TOPAZ_DVT,
 	TOPAZ_PVT,
-};
-enum topaz3g_board_types {
-	TOPAZ3G_PROTO = 0,
+	TOPAZ3G_PROTO,
+	TOPAZ3G_PROTO2,
 	TOPAZ3G_EVT1,
 	TOPAZ3G_EVT2,
 	TOPAZ3G_EVT3,
 	TOPAZ3G_EVT4,
 	TOPAZ3G_DVT,
-	TOPAZ3G_PVT,
+	TOPAZ3G_PVT
+};
+
+enum opal_board_types {
+	OPAL_BOARD_UNKNOWN = 0,
+	OPAL_PROTO,
+	OPAL_PROTO2,
+	OPAL_EVT1,
+	OPAL_EVT2,
+	OPAL_EVT3,
+	OPAL_DVT,
+	OPAL_PVT,
+	OPAL3G_PROTO,
+	OPAL3G_PROTO2,
+	OPAL3G_EVT1,
+	OPAL3G_EVT2,
+	OPAL3G_EVT3,
+	OPAL3G_DVT,
+	OPAL3G_PVT
 };
 static bool board_is_topaz_3g_flag = false;
 static bool board_is_topaz_3g (void)
@@ -147,25 +165,6 @@ static bool board_is_topaz_wifi (void)
 {
 	return board_is_topaz_wifi_flag;
 }
-enum opal_board_types {
-	OPAL_PROTO = 0,
-	OPAL_PROTO2,
-	OPAL_EVT1,
-	OPAL_EVT2,
-	OPAL_EVT3,
-	OPAL_DVT,
-	OPAL_PVT,
-};
-enum opal3g_board_types {
-	OPAL3G_PROTO = 0,
-	OPAL3G_PROTO2,
-	OPAL3G_EVT1,
-	OPAL3G_EVT2,
-	OPAL3G_EVT3,
-	OPAL3G_DVT,
-	OPAL3G_PVT,
-};
-
 static bool board_is_opal_3g_flag = false;
 static bool board_is_opal_3g (void)
 {
@@ -177,7 +176,100 @@ static bool board_is_opal_wifi (void)
 	return board_is_opal_wifi_flag;
 }
 
-static u32 board_type = TOPAZ_PROTO;
+static u32 board_type = 0;
+
+static struct {
+	enum topaz_board_types type;
+	const char *str;
+} topaz_boardtype_tbl[] = {
+	/* Topaz WiFi */
+	{TOPAZ_PROTO,    "topaz-Wifi-proto"},
+	{TOPAZ_PROTO2,   "topaz-Wifi-proto2"},
+	{TOPAZ_EVT1,     "topaz-Wifi-evt1"},
+	{TOPAZ_EVT2,     "topaz-Wifi-evt2"},
+	{TOPAZ_EVT3,     "topaz-Wifi-evt3"},
+	{TOPAZ_DVT,      "topaz-Wifi-dvt"},
+	{TOPAZ_PVT,      "topaz-Wifi-pvt"},
+
+	/* Topaz 3G */
+	{TOPAZ3G_PROTO,    "topaz-3G-proto"},
+	{TOPAZ3G_PROTO2,   "topaz-3G-proto2"},
+	{TOPAZ3G_EVT1,     "topaz-3G-evt1"},
+	{TOPAZ3G_EVT2,     "topaz-3G-evt2"},
+	{TOPAZ3G_EVT3,     "topaz-3G-evt3"},
+	{TOPAZ3G_EVT4,     "topaz-3G-evt4"},
+	{TOPAZ3G_DVT,      "topaz-3G-dvt"},
+	{TOPAZ3G_PVT,      "topaz-3G-pvt"},
+
+	/* TODO: Non-standard board strings, to be removed once all copies of
+	 * bootie in the wild are updated to use the above format */
+
+	/* Topaz WiFi */
+	{TOPAZ_PROTO,    "topaz-1stbuild-Wifi"},
+	{TOPAZ_PROTO2,   "topaz-2ndbuild-Wifi"},
+	{TOPAZ_EVT1,     "topaz-3rdbuild-Wifi"},
+	{TOPAZ_EVT2,     "topaz-4thbuild-Wifi"},
+	{TOPAZ_EVT3,     "topaz-5thbuild-Wifi"},
+	{TOPAZ_DVT,      "topaz-6thbuild-Wifi"},
+	{TOPAZ_PVT,      "topaz-7thbuild-Wifi"},
+	{TOPAZ_PVT,      "topaz-pvt-Wifi"},
+
+	/* Topaz 3G */
+	{TOPAZ3G_PROTO,    "topaz-1stbuild-3G"},
+	{TOPAZ3G_PROTO2,   "topaz-2ndbuild-3G"},
+	{TOPAZ3G_EVT1,     "topaz-3rdbuild-3G"},
+	{TOPAZ3G_EVT2,     "topaz-4thbuild-3G"},
+	{TOPAZ3G_EVT3,     "topaz-5thbuild-3G"},
+	{TOPAZ3G_DVT,      "topaz-6thbuild-3G"},
+	{TOPAZ3G_PVT,      "topaz-7thbuild-3G"},
+	{TOPAZ3G_PVT,      "topaz-pvt-3G"},
+
+
+};
+
+static struct {
+	enum opal_board_types type;
+	const char *str;
+} opal_boardtype_tbl[] = {
+	/* Opal WiFi */
+	{OPAL_PROTO,    "opal-Wifi-proto"},
+	{OPAL_PROTO2,   "opal-Wifi-proto2"},
+	{OPAL_EVT1,     "opal-Wifi-evt1"},
+	{OPAL_EVT2,     "opal-Wifi-evt2"},
+	{OPAL_EVT3,     "opal-Wifi-evt3"},
+	{OPAL_DVT,      "opal-Wifi-dvt"},
+	{OPAL_PVT,      "opal-Wifi-pvt"},
+
+	/* Opal 3G */
+	{OPAL3G_PROTO,    "opal-3G-proto"},
+	{OPAL3G_PROTO2,   "opal-3G-proto2"},
+	{OPAL3G_EVT1,     "opal-3G-evt1"},
+	{OPAL3G_EVT2,     "opal-3G-evt2"},
+	{OPAL3G_EVT3,     "opal-3G-evt3"},
+	{OPAL3G_DVT,      "opal-3G-dvt"},
+	{OPAL3G_PVT,      "opal-3G-pvt"},
+
+	/* OPAL Wifi */
+	{OPAL_PROTO,		"opal-1stbuild-Wifi"},
+	{OPAL_PROTO2,		"opal-2ndbuild-Wifi"},
+	{OPAL_EVT1,			"opal-3rdbuild-Wifi"},
+	{OPAL_EVT2,			"opal-4thbuild-Wifi"},
+	{OPAL_EVT3,			"opal-5thbuild-Wifi"},
+	{OPAL_DVT,			"opal-6thbuild-Wifi"},
+	{OPAL_PVT,			"opal-7thbuild-Wifi"},
+	{OPAL_PVT,			"opal-pvt-Wifi"},
+
+	/* OPAL 3G */
+	{OPAL3G_PROTO,		"opal-1stbuild-3G"},
+	{OPAL3G_PROTO2,		"opal-2ndbuild-3G"},
+	{OPAL3G_EVT1,		"opal-3rdbuild-3G"},
+	{OPAL3G_EVT2,		"opal-4thbuild-3G"},
+	{OPAL3G_EVT3,		"opal-5thbuild-3G"},
+	{OPAL3G_DVT,		"opal-6thbuild-3G"},
+	{OPAL3G_PVT,		"opal-7thbuild-3G"},
+	{OPAL3G_PVT,		"opal-pvt-3G"},
+};
+
 
 
 #define MSM_SHARED_RAM_PHYS 0x40000000
@@ -11248,111 +11340,83 @@ void msm_fusion_setup_pinctrl(void)
 
 static int __init boardtype_setup(char *boardtype_str)
 {
+	int i;
+
 	board_is_topaz_wifi_flag = false;
 	board_is_topaz_3g_flag = false;
 	board_is_opal_3g_flag = false;
 	board_is_opal_wifi_flag = false;
-	if (!strcmp(boardtype_str, "topaz-1stbuild-Wifi")) {
-		board_type = TOPAZ_PROTO;
-		board_is_topaz_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "topaz-2ndbuild-Wifi")) {
-		board_type = TOPAZ_PROTO2;
-		board_is_topaz_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "topaz-3rdbuild-Wifi")) {
-		board_type = TOPAZ_EVT1;
-		board_is_topaz_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "topaz-4thbuild-Wifi")) {
-		board_type = TOPAZ_EVT2;
-		board_is_topaz_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "topaz-5thbuild-Wifi")) {
-		board_type = TOPAZ_EVT3;
-		board_is_topaz_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "topaz-6thbuild-Wifi")) {
-		board_type = TOPAZ_DVT;
-		board_is_topaz_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "topaz-7thbuild-Wifi")) {
-		board_type = TOPAZ_PVT;
-		board_is_topaz_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "topaz-pvt-Wifi")) {
-		board_type = TOPAZ_PVT;
-		board_is_topaz_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "topaz-1stbuild-3G")) {
-		board_type = TOPAZ3G_PROTO;
-		board_is_topaz_3g_flag	= true;
-	} else if (!strcmp(boardtype_str, "topaz-2ndbuild-3G")) {
-		board_type = TOPAZ3G_EVT1;
-		board_is_topaz_3g_flag	= true;
-	} else if (!strcmp(boardtype_str, "topaz-3rdbuild-3G")) {
-		board_type = TOPAZ3G_EVT2;
-		board_is_topaz_3g_flag	= true;
-	} else if (!strcmp(boardtype_str, "topaz-4thbuild-3G")) {
-		board_type = TOPAZ3G_EVT3;
-		board_is_topaz_3g_flag	= true;
-	} else if (!strcmp(boardtype_str, "topaz-5thbuild-3G")) {
-		board_type = TOPAZ3G_DVT;
-		board_is_topaz_3g_flag	= true;
-	} else if (!strcmp(boardtype_str, "topaz-6thbuild-3G")) {
-		board_type = TOPAZ3G_PVT;
-		board_is_topaz_3g_flag	= true;
-	} else if (!strcmp(boardtype_str, "topaz-7thbuild-3G")) {
-		board_type = TOPAZ3G_PVT;
-		board_is_topaz_3g_flag	= true;
-	} else if (!strcmp(boardtype_str, "topaz-pvt-3G")) {
-		board_type = TOPAZ3G_PVT;
-		board_is_topaz_3g_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-1stbuild-Wifi")) {
-		board_type = OPAL_PROTO;
-		board_is_opal_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-2ndbuild-Wifi")) {
-		board_type = OPAL_PROTO2;
-		board_is_opal_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-3rdbuild-Wifi")) {
-		board_type = OPAL_EVT1;
-		board_is_opal_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-4thbuild-Wifi")) {
-		board_type = OPAL_EVT2;
-		board_is_opal_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-5thbuild-Wifi")) {
-		board_type = OPAL_EVT3;
-		board_is_opal_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-6thbuild-Wifi")) {
-		board_type = OPAL_DVT;
-		board_is_opal_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-7thbuild-Wifi")) {
-		board_type = OPAL_PVT;
-		board_is_opal_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-pvt-Wifi")) {
-		board_type = OPAL_PVT;
-		board_is_opal_wifi_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-1stbuild-3G")) {
-		board_type = OPAL3G_PROTO;
-		board_is_opal_3g_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-2ndbuild-3G")) {
-		board_type = OPAL3G_PROTO2;
-		board_is_opal_3g_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-3rdbuild-3G")) {
-		board_type = OPAL3G_EVT1;
-		board_is_opal_3g_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-4thbuild-3G")) {
-		board_type = OPAL3G_EVT2;
-		board_is_opal_3g_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-5thbuild-3G")) {
-		board_type = OPAL3G_EVT3;
-		board_is_opal_3g_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-6thbuild-3G")) {
-		board_type = OPAL3G_DVT;
-		board_is_opal_3g_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-7thbuild-3G")) {
-		board_type = OPAL3G_PVT;
-		board_is_opal_3g_flag	= true;
-	} else if (!strcmp(boardtype_str, "opal-pvt-3G")) {
-		board_type = OPAL3G_PVT;
-		board_is_opal_3g_flag	= true;
-	} else {
-		board_type = TOPAZ_PROTO;
-		board_is_topaz_wifi_flag = true;
- 	}
-	printk("%s(%d) : str = %s\n", __func__, __LINE__, boardtype_str);
+
+	if (machine_is_tenderloin()) {
+		for (i = 0; i < ARRAY_SIZE(topaz_boardtype_tbl); i++) {
+			if (!strcmp(boardtype_str, topaz_boardtype_tbl[i].str)) {
+				board_type = topaz_boardtype_tbl[i].type;
+				break;
+			}
+		}
+
+		switch (board_type) {
+			case TOPAZ_PROTO:
+			case TOPAZ_PROTO2:
+			case TOPAZ_EVT1:
+			case TOPAZ_EVT2:
+			case TOPAZ_EVT3:
+			case TOPAZ_DVT:
+			case TOPAZ_PVT:
+				board_is_topaz_wifi_flag = true;
+				break;
+			case TOPAZ3G_PROTO:
+			case TOPAZ3G_EVT1:
+			case TOPAZ3G_EVT2:
+			case TOPAZ3G_EVT3:
+			case TOPAZ3G_EVT4:
+			case TOPAZ3G_DVT:
+			case TOPAZ3G_PVT:
+				board_is_topaz_3g_flag = true;
+				break;
+		}
+	}
+	if (machine_is_opal()) {
+		for (i = 0; i < ARRAY_SIZE(opal_boardtype_tbl); i++) {
+			if (!strcmp(boardtype_str, opal_boardtype_tbl[i].str)) {
+				board_type = opal_boardtype_tbl[i].type;
+				break;
+			}
+		}
+
+		switch (board_type) {
+			case OPAL_PROTO:
+			case OPAL_PROTO2:
+			case OPAL_EVT1:
+			case OPAL_EVT2:
+			case OPAL_EVT3:
+			case OPAL_DVT:
+			case OPAL_PVT:
+				board_is_opal_wifi_flag = true;
+				break;
+			case OPAL3G_PROTO:
+			case OPAL3G_EVT1:
+			case OPAL3G_EVT2:
+			case OPAL3G_EVT3:
+			case OPAL3G_DVT:
+			case OPAL3G_PVT:
+				board_is_opal_3g_flag = true;
+				break;
+		}
+	}
+
+	printk("%s: boardtype_str = %s\n", __func__, boardtype_str);
+
+	if (board_is_topaz_wifi())
+		printk("%s: boardtype = topaz_wifi\n", __func__);
+	else if (board_is_topaz_3g())
+		printk("%s: boardtype = topaz_3g\n", __func__);
+	else if (board_is_opal_wifi())
+		printk("%s: boardtype = opal_wifi\n", __func__);
+	else if (board_is_opal_3g())
+		printk("%s: boardtype = opal_3g\n", __func__);
+	else
+		printk("%s: boardtype = unknown\n", __func__);
 
 	return 0;
 }
@@ -11372,8 +11436,8 @@ uint32_t fixup_clk_num = ARRAY_SIZE(fixup_clk_ids);
 
 static void __init tenderloin_setup_pin_table(void)
 {
-	if(board_is_topaz_3g()) {
-		printk("Choosing tenderloin_pins_3g\n");
+	if (board_is_topaz_3g()) {
+		printk("%s: using tenderloin_pins_3g\n", __func__);
 		if (board_type >= TOPAZ3G_DVT) {
 			pin_table = &tenderloin_pins_3g_dvt[0];
 		} else if (board_type == TOPAZ3G_EVT4) {
@@ -11382,13 +11446,15 @@ static void __init tenderloin_setup_pin_table(void)
 			pin_table = &tenderloin_pins_3g[0];
 		}
 	}
-	else {
-		printk("Choosing tenderloin_pins_wifi\n");
+	else if (board_is_topaz_wifi()) {
+		printk("%s: using tenderloin_pins_wifi\n", __func__);
 		if (board_type >= TOPAZ_DVT) {
 			pin_table = &tenderloin_pins_wifi_dvt[0];
 		} else {
 			pin_table = &tenderloin_pins_wifi[0];
 		}
+	} else {
+		printk("%s: no pins selected\n", __func__);
 	}
 
 #ifdef CONFIG_KEYBOARD_GPIO
@@ -11439,7 +11505,7 @@ static void __init tenderloin_setup_pin_table(void)
 	tenderloin_a6_1_platform_data.sbw_tdio_gpio = pin_table[TENDERLOIN_A6_1_TDIO_PIN];
 	tenderloin_a6_1_platform_data.sbw_wkup_gpio = pin_table[TENDERLOIN_A6_1_WAKEUP_PIN];
 
-	if(boardtype_is_3g()) {
+	if(board_is_topaz_3g()) {
 		tenderloin_a6_0_platform_data.sbw_init_gpio_config = a6_0_sbw_gpio_config_3g;
 		tenderloin_a6_0_platform_data.sbw_init_gpio_config_size = ARRAY_SIZE(a6_0_sbw_gpio_config_3g);
 		tenderloin_a6_0_platform_data.sbw_deinit_gpio_config = a6_0_sbw_gpio_config_3g;
@@ -11458,7 +11524,7 @@ static void __init tenderloin_setup_pin_table(void)
 			a6_0_sbw_gpio_config_3g [0] = TENDERLOIN_A6_0_TCK_3G_DVT;
 		}
 
-	} else {
+	} else if (board_is_topaz_wifi()) {
 		// A6 irq
 		if (board_type >= TOPAZ_DVT) {
 			a6_0_config_data [0] = TENDERLOIN_A6_0_MSM_IRQ_DVT;
@@ -11617,16 +11683,16 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 	}
 	else {
 #if 0 // TODO
-		if(boardtype_is_3g()) {
+		if (board_is_topaz_3g()) {
 			/* 3G EVT4 boards use the same gpiomux cfg as DVT */
-			if (board_type >= TOPAZ_3G_EVT4) {
+			if (board_type >= TOPAZ3G_EVT4) {
 				msm8x60_init_gpiomux(tenderloin_3g_dvt_gpiomux_cfgs);
 			} else {
 				msm8x60_init_gpiomux(tenderloin_3g_gpiomux_cfgs);
 			}
 			mpu3050_i2c_board_info[0].irq = MSM_GPIO_TO_INT(TENDERLOIN_GYRO_INT_3G);
 
-		} else {
+		} else if (board_is_topaz_wifi()) {
 			if (board_type >= TOPAZ_DVT) {
 				msm8x60_init_gpiomux(tenderloin_dvt_gpiomux_cfgs);
 			} else {
