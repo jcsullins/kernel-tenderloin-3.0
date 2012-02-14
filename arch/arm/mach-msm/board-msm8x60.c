@@ -114,6 +114,21 @@
 #include <linux/ion.h>
 #include <mach/ion.h>
 
+#ifdef CONFIG_CHARGER_MAX8903
+#include <linux/max8903_charger.h>
+#include <linux/power_supply.h>
+#endif
+
+#ifdef CONFIG_A6
+#include <linux/a6_sbw_interface.h>
+#include <linux/a6.h>
+#include <mach/gpio.h>
+#endif
+
+#ifdef CONFIG_HRES_COUNTER
+#include <linux/hres_counter.h>
+#endif
+
 // Pointer to topaz/tenderloin opal/shortloin wifi/3G pin arrays
 int *pin_table = NULL;
 
@@ -270,6 +285,20 @@ static struct {
 	{OPAL3G_PVT,		"opal-pvt-3G"},
 };
 
+
+int config_gpio_tlmm_table(uint32_t *table, int len)
+{
+	int n, rc = 0;
+	for (n = 0; n < len; n++) {
+		rc = gpio_tlmm_config(table[n], GPIO_CFG_ENABLE);
+		if (rc) {
+			pr_err("%s: gpio_tlmm_config(%#x)=%d\n",
+				__func__, table[n], rc);
+			break;
+		}
+	}
+	return rc;
+}
 
 
 #define MSM_SHARED_RAM_PHYS 0x40000000
@@ -1186,6 +1215,805 @@ static struct platform_device isp1763_device = {
 };
 #endif
 
+
+#ifdef CONFIG_CHARGER_MAX8903
+void msm_hsusb_chg_connected(enum chg_type chg_type)
+{
+	printk("MAX8903_CHARGER: %s : chg_type = %d\n", __func__, chg_type);
+	if (chg_type == USB_CHG_TYPE__SDP) {
+		max8903_charger_connected(1, POWER_SUPPLY_TYPE_USB);
+	} else {
+		if ((chg_type == USB_CHG_TYPE__WALLCHARGER) || (chg_type == USB_CHG_TYPE__CARKIT)) {
+			max8903_charger_connected(1, POWER_SUPPLY_TYPE_MAINS);
+		} else {
+			max8903_charger_connected(0, POWER_SUPPLY_TYPE_BATTERY);
+		}
+	}
+
+}
+
+void msm_hsusb_chg_vbus_draw(unsigned mA)
+{
+	max8903_charger_draw_current(mA);
+}
+
+#define CHG_D_ISET1_GPIO 34
+#define CHG_D_ISET2_GPIO 30
+static uint32_t max8903_charger_gpio_table_topaz[] = {
+	GPIO_CFG(CHG_D_ISET1_GPIO,  0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(CHG_D_ISET2_GPIO,  0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(42,  0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), /* DCM */
+	GPIO_CFG(133, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), /* IUSB */
+	GPIO_CFG(140, 0, GPIO_CFG_INPUT,  GPIO_CFG_PULL_UP, GPIO_CFG_2MA), /* DOK_N */
+	GPIO_CFG(41,  0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), /* CEN */
+	GPIO_CFG(33,  0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), /* USUS */
+	GPIO_CFG(35,  0, GPIO_CFG_INPUT,  GPIO_CFG_PULL_UP, GPIO_CFG_2MA), /* FLT_N */
+	GPIO_CFG(36,  0, GPIO_CFG_INPUT,  GPIO_CFG_PULL_UP, GPIO_CFG_2MA), /* CHG_N */
+
+
+};
+static uint32_t max8903_charger_gpio_table[] = {
+	GPIO_CFG(42,  0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), /* DCM */
+	GPIO_CFG(134, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), /* IUSB */
+	GPIO_CFG(86, 0, GPIO_CFG_INPUT,  GPIO_CFG_PULL_UP, GPIO_CFG_2MA), /* DOK_N */
+	GPIO_CFG(41,  0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), /* CEN */
+	GPIO_CFG(33,  0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), /* USUS */
+	GPIO_CFG(35,  0, GPIO_CFG_INPUT,  GPIO_CFG_PULL_UP, GPIO_CFG_2MA), /* FLT_N */
+	GPIO_CFG(36,  0, GPIO_CFG_INPUT,  GPIO_CFG_PULL_UP, GPIO_CFG_2MA), /* CHG_N */
+
+	GPIO_CFG(CHG_D_ISET1_GPIO,  0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(CHG_D_ISET2_GPIO,  0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+
+};
+
+static int max8903_charger_board_init(struct platform_device *pdev)
+{
+	int ret = 0;
+
+	if (board_is_topaz_wifi()) {
+		config_gpio_tlmm_table(max8903_charger_gpio_table_topaz, ARRAY_SIZE(max8903_charger_gpio_table_topaz));
+	} else {
+		config_gpio_tlmm_table(max8903_charger_gpio_table, ARRAY_SIZE(max8903_charger_gpio_table));
+	}
+	gpio_free(CHG_D_ISET1_GPIO); /* TODO - find real fix -JCS */
+	gpio_free(33); /* TODO - find real fix -JCS */
+	gpio_free(36); /* TODO - find real fix -JCS */
+	ret = gpio_request(CHG_D_ISET1_GPIO, "CHG_D_ISET1_GPIO");
+	if (ret < 0) {
+		pr_err("MAX8903_CHARGER : %s : failed to request %d\n", __func__, CHG_D_ISET1_GPIO);
+		return ret;
+	}
+	ret = gpio_direction_output(CHG_D_ISET1_GPIO, gpio_get_value_cansleep(CHG_D_ISET1_GPIO));
+	if (ret < 0) {
+		gpio_free(CHG_D_ISET1_GPIO);
+		pr_err("MAX8903_CHARGER : %s : failed to set %d\n", __func__, CHG_D_ISET1_GPIO);
+		return ret;
+	}
+	gpio_export(CHG_D_ISET1_GPIO, true);
+	gpio_export_link(&pdev->dev, "CHG_D_ISET1_GPIO", CHG_D_ISET1_GPIO);
+
+	ret = gpio_request(CHG_D_ISET2_GPIO, "CHG_D_ISET2_GPIO");
+	if (ret < 0) {
+		gpio_free(CHG_D_ISET1_GPIO);
+		pr_err("MAX8903_CHARGER : %s : failed to request %d\n", __func__, CHG_D_ISET2_GPIO);
+		return ret;
+	}
+	ret = gpio_direction_output(CHG_D_ISET2_GPIO, gpio_get_value_cansleep(CHG_D_ISET2_GPIO));
+	if (ret < 0) {
+		gpio_free(CHG_D_ISET1_GPIO);
+		gpio_free(CHG_D_ISET2_GPIO);
+		pr_err("MAX8903_CHARGER : %s : failed to request %d\n", __func__, CHG_D_ISET2_GPIO);
+		return ret;
+	}
+	gpio_export(CHG_D_ISET2_GPIO, true);
+	gpio_export_link(&pdev->dev, "CHG_D_ISET2_GPIO", CHG_D_ISET2_GPIO);
+
+	return ret;
+
+}
+void max8903_charger_config_DC_current(unsigned mA)
+{
+	if ((board_is_topaz_wifi() && (board_type >= TOPAZ_EVT1)) || board_is_topaz_3g() || board_is_opal_3g() || board_is_opal_wifi()) {
+		if (mA <= 500) {
+			//do nothing
+		} else {
+			if (mA <= 750) {
+				gpio_set_value_cansleep(CHG_D_ISET1_GPIO, 0);
+				gpio_set_value_cansleep(CHG_D_ISET2_GPIO, 0);
+			} else {
+				if (mA <= 900) {
+					gpio_set_value_cansleep(CHG_D_ISET1_GPIO, 0);
+					gpio_set_value_cansleep(CHG_D_ISET2_GPIO, 1);
+				} else  {
+					if (mA <= 1400) {
+						gpio_set_value_cansleep(CHG_D_ISET1_GPIO, 1);
+						gpio_set_value_cansleep(CHG_D_ISET2_GPIO, 1);
+					} else {
+						gpio_set_value_cansleep(CHG_D_ISET1_GPIO, 1);
+						gpio_set_value_cansleep(CHG_D_ISET2_GPIO, 0);
+					}
+				}
+			}
+		}
+	} else {
+		if (mA <= 500) {
+			//do nothing
+		} else {
+			if (mA <= 900) {
+				gpio_set_value_cansleep(CHG_D_ISET1_GPIO, 0);
+				gpio_set_value_cansleep(CHG_D_ISET2_GPIO, 0);
+			} else {
+				if (mA <= 1000) {
+					gpio_set_value_cansleep(CHG_D_ISET1_GPIO, 0);
+					gpio_set_value_cansleep(CHG_D_ISET2_GPIO, 1);
+				} else  {
+					if (mA <= 1500) {
+						gpio_set_value_cansleep(CHG_D_ISET1_GPIO, 1);
+						gpio_set_value_cansleep(CHG_D_ISET2_GPIO, 0);
+					} else {
+						gpio_set_value_cansleep(CHG_D_ISET1_GPIO, 1);
+						gpio_set_value_cansleep(CHG_D_ISET2_GPIO, 1);
+					}
+				}
+			}
+		}
+	}
+}
+
+static struct max8903_charger_platfom_data max8903_charger_pdata_topaz = {
+	.DCM_pin   = 42,
+	.DCM_pin_polarity = 1,
+	.IUSB_pin  = 133,
+	.IUSB_pin_polarity = 0,
+	.DOK_N_pin = 140,
+	.CEN_N_pin = 41,
+	.CEN_N_pin_polarity = 1,
+	.USUS_pin  = 33,
+	.USUS_pin_polarity = 0, /* -JCS */
+	.FLT_N_pin = 35,
+	.UOK_N_pin = -1,
+	.CHG_N_pin = 36,
+	.avail_charge_sources = AC_CHG | USB_CHG,
+	.board_init = max8903_charger_board_init,
+	.config_DC_current = max8903_charger_config_DC_current,
+
+};
+
+static struct max8903_charger_platfom_data max8903_charger_pdata = {
+	.DCM_pin   = 42,
+	.DCM_pin_polarity = 1,
+	.IUSB_pin  = 134,
+	.IUSB_pin_polarity = 0,
+	.DOK_N_pin = 86,
+	.CEN_N_pin = 41,
+	.CEN_N_pin_polarity = 1,
+	.USUS_pin  = 33,
+	.USUS_pin_polarity = 0,
+	.FLT_N_pin = 35,
+	.UOK_N_pin = -1,
+	.CHG_N_pin = 36,
+	.avail_charge_sources = AC_CHG | USB_CHG,
+	.board_init = max8903_charger_board_init,
+	.config_DC_current = max8903_charger_config_DC_current,
+
+};
+
+static struct platform_device max8903_charger_device = {
+	.name               = "max8903-charger",
+	.id                 = -1,
+};
+
+#endif /* CONFIG_CHARGER_MAX8903 */
+
+#ifdef CONFIG_HRES_COUNTER
+static int msm_hres_timer_init(void** timer)
+{
+	return 0;
+}
+
+static int msm_hres_timer_release(void* timer)
+{
+	return 0;
+}
+
+#ifdef CONFIG_PM
+static int msm_hres_timer_suspend(void *timer)
+{
+	return 0;
+}
+
+static int msm_hres_timer_resume(void *timer)
+{
+	return 0;
+}
+#else
+#define msm_hres_timer_suspend    NULL
+#define msm_hres_timer_resume     NULL
+#endif
+
+extern u32 msm_dgt_read_count(void);
+static u32 msm_hres_timer_read(void* timer)
+{
+	return msm_dgt_read_count();
+}
+
+extern u32 msm_dgt_convert_usec(u32);
+static u32 msm_hres_timer_convert(u32 count)
+{
+	// Count is in 24.576Mhz terms
+	// convert it to uSec
+	// return (count * 400) / 2457;
+	return msm_dgt_convert_usec(count);
+}
+
+static struct hres_counter_platform_data msm_hres_counter_platform_data = {
+	.init_hres_timer = msm_hres_timer_init,
+	.release_hres_timer = msm_hres_timer_release,
+	.suspend_hres_timer = msm_hres_timer_suspend,
+	.resume_hres_timer = msm_hres_timer_resume,
+	.read_hres_timer = msm_hres_timer_read,
+	.convert_hres_timer = msm_hres_timer_convert,
+};
+
+static struct platform_device hres_counter_device = {
+	.name = "hres_counter",
+	.id   = -1,
+	.dev  = {
+		.platform_data  = &msm_hres_counter_platform_data,
+	}
+};
+#endif
+
+#if defined(CONFIG_A6)
+#define A6_INTERNAL_WAKE 1
+
+uint16_t a6_0_set_sbwtck(void)
+{
+	// gpio_set_value configures the pin as gpio-output before writing value
+	if (board_is_topaz_wifi()) {
+		gpio_set_value(157, 1);
+	} else {
+		if ((board_is_topaz_3g() && (board_type > TOPAZ3G_DVT)) || (board_is_opal_3g() && (board_type > OPAL3G_EVT1))) {
+			gpio_set_value(156, 1);
+		} else {
+			gpio_set_value(68, 1);
+		}
+	}
+	return 0;
+}
+uint16_t a6_1_set_sbwtck(void)
+{
+	// gpio_set_value configures the pin as gpio-output before writing value
+	gpio_set_value(115, 1);
+	return 0;
+}
+
+uint16_t a6_0_clr_sbwtck(void)
+{
+	// gpio_set_value configures the pin as gpio-output before writing value
+	if (board_is_topaz_wifi()) {
+		gpio_set_value(157, 0);
+	} else {
+		if ((board_is_topaz_3g() && (board_type > TOPAZ3G_DVT)) || (board_is_opal_3g() && (board_type > OPAL3G_EVT1))) {
+			gpio_set_value(156, 0);
+		} else {
+			gpio_set_value(68, 0);
+		}
+	}
+	return 0;
+}
+
+uint16_t a6_1_clr_sbwtck(void)
+{
+	// gpio_set_value configures the pin as gpio-output before writing value
+	gpio_set_value(115, 0);
+	return 0;
+}
+
+uint16_t a6_0_set_sbwtdio(void)
+{
+	// gpio_set_value configures the pin as gpio-output before writing value
+	if (board_is_topaz_wifi()) {
+		gpio_set_value(158, 1);
+	} else {
+		gpio_set_value(170, 1);
+	}
+	return 0;
+}
+uint16_t a6_1_set_sbwtdio(void)
+{
+	// gpio_set_value configures the pin as gpio-output before writing value
+	gpio_set_value(116, 1);
+	return 0;
+}
+
+uint16_t a6_0_clr_sbwtdio(void)
+{
+	// gpio_set_value configures the pin as gpio-output before writing value
+	if (board_is_topaz_wifi()) {
+		gpio_set_value(158, 0);
+	} else {
+		gpio_set_value(170, 0);
+	}
+	return 0;
+}
+uint16_t a6_1_clr_sbwtdio(void)
+{
+	// gpio_set_value configures the pin as gpio-output before writing value
+	gpio_set_value(116, 0);
+	return 0;
+}
+
+uint16_t a6_0_set_in_sbwtdio(void)
+{
+	if (board_is_topaz_wifi()) {
+		gpio_direction_input(158);
+	} else {
+		gpio_direction_input(170);
+	}
+
+	return 0;
+}
+
+uint16_t a6_1_set_in_sbwtdio(void)
+{
+	gpio_direction_input(116);
+
+	return 0;
+}
+
+uint16_t a6_0_set_out_sbwtdio(void)
+{
+	if (board_is_topaz_wifi()) {
+		gpio_direction_output(158, 0);
+	} else {
+		gpio_direction_output(170, 0);
+	}
+
+	return 0;
+}
+
+uint16_t a6_1_set_out_sbwtdio(void)
+{
+	gpio_direction_output(116, 0);
+
+	return 0;
+}
+
+uint16_t a6_0_get_sbwtdio(void)
+{
+	if (board_is_topaz_wifi()) {
+		return gpio_get_value(158);
+	} else {
+		return gpio_get_value(170);
+	}
+}
+
+uint16_t a6_1_get_sbwtdio(void)
+{
+	return gpio_get_value(116);
+}
+
+uint16_t a6_0_set_sbwakeup(void)
+{
+	// gpio_set_value configures the pin as gpio-output before writing value
+	gpio_set_value(155, 1);
+	udelay(5);
+	return 0;
+}
+
+uint16_t a6_1_set_sbwakeup(void)
+{
+	// gpio_set_value configures the pin as gpio-output before writing value
+	if (board_is_topaz_wifi()) {
+		gpio_set_value(141, 1);
+	} else {
+		gpio_set_value(78, 1);
+	}
+	udelay(5);
+	return 0;
+}
+
+uint16_t a6_0_clr_sbwakeup(void)
+{
+	// gpio_set_value configures the pin as gpio-output before writing value
+	gpio_set_value(155, 0);
+	return 0;
+}
+uint16_t a6_1_clr_sbwakeup(void)
+{
+	// gpio_set_value configures the pin as gpio-output before writing value
+	if (board_is_topaz_wifi()) {
+		gpio_set_value(141, 0);
+	} else {
+		gpio_set_value(78, 0);
+	}
+	return 0;
+}
+
+/****/
+/* per-target functions */
+/****/
+// delay in usecs
+void a6_delay_impl(uint32_t delay_us)
+{
+	if ((delay_us >> 10) <= MAX_UDELAY_MS) {
+		udelay(delay_us);
+	}
+	else {
+		mdelay(delay_us >> 10);
+	}
+}
+
+struct a6_wake_interface_data {
+	int	pwm_channel;
+	int	pwm_period;
+	int	pwm_duty;
+	struct pwm_device *pwm_data;
+};
+
+static struct a6_sbw_interface sbw_ops_impl_0;
+static struct a6_sbw_interface sbw_ops_impl_1;
+static struct a6_wake_ops a6_wake_ops_impl_0;
+static struct a6_wake_ops a6_wake_ops_impl_1;
+
+
+static uint32_t a6_0_sbw_init_gpio_config[] = {
+	GPIO_CFG(68, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(155, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	/* the pull-up config below is for input mode of A6_TDIO. A6 does not always drive
+	   this and it floats in input mode unless explicitly pulled-up by host. */
+	GPIO_CFG(170, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA),
+};
+
+static uint32_t a6_0_sbw_init_gpio_config_topaz3g_6thbuild[] = {
+	GPIO_CFG(156, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(155, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	/* the pull-up config below is for input mode of A6_TDIO. A6 does not always drive
+	   this and it floats in input mode unless explicitly pulled-up by host. */
+	GPIO_CFG(170, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA),
+};
+
+static uint32_t a6_1_sbw_init_gpio_config[] = {
+	GPIO_CFG(115, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(78, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	/* the pull-up config below is for input mode of A6_TDIO. A6 does not always drive
+	   this and it floats in input mode unless explicitly pulled-up by host. */
+	GPIO_CFG(116, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA),
+};
+
+static uint32_t a6_0_sbw_deinit_gpio_config[] = {
+	GPIO_CFG(68, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(155, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(170, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+};
+
+static uint32_t a6_0_sbw_deinit_gpio_config_topaz3g_6thbuild[] = {
+	GPIO_CFG(156, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(155, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(170, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+};
+
+static uint32_t a6_1_sbw_deinit_gpio_config[] = {
+	GPIO_CFG(115, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(78, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(116, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+};
+
+static uint32_t a6_0_sbw_init_gpio_config_topaz[] = {
+	GPIO_CFG(157, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(155, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	/* the pull-up config below is for input mode of A6_TDIO. A6 does not always drive
+	   this and it floats in input mode unless explicitly pulled-up by host. */
+	GPIO_CFG(158, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA),
+};
+
+static uint32_t a6_1_sbw_init_gpio_config_topaz[] = {
+	GPIO_CFG(115, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(141, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+	/* the pull-up config below is for input mode of A6_TDIO. A6 does not always drive
+	   this and it floats in input mode unless explicitly pulled-up by host. */
+	GPIO_CFG(116, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA),
+};
+
+static uint32_t a6_0_sbw_deinit_gpio_config_topaz[] = {
+	GPIO_CFG(157, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(155, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(158, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+};
+
+static uint32_t a6_1_sbw_deinit_gpio_config_topaz[] = {
+	GPIO_CFG(115, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(141, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(116, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+};
+
+static int a6_sbw_init_imp(struct a6_platform_data* plat_data)
+{
+	int rc = 0;
+
+	rc = config_gpio_tlmm_table((uint32_t *)plat_data->sbw_init_gpio_config, plat_data->sbw_init_gpio_config_size);
+	if (rc < 0) {
+		printk(KERN_ERR "%s: failed to configure A6 SBW gpios.\n", __func__);
+	}
+
+	return rc;
+}
+
+static int a6_sbw_deinit_imp(struct a6_platform_data* plat_data)
+{
+	int rc = 0;
+
+	rc = config_gpio_tlmm_table((uint32_t *)plat_data->sbw_deinit_gpio_config, plat_data->sbw_deinit_gpio_config_size);
+	if (rc < 0) {
+		printk(KERN_ERR "%s: failed to de-configure A6 SBW gpios.\n", __func__);
+	}
+
+	return rc;
+}
+
+static struct a6_platform_data a6_0_platform_data = {
+	.dev_name		= A6_DEVICE_0,
+	.sbw_wkup_gpio		= 155,
+	.sbw_ops		= &sbw_ops_impl_0,
+	.wake_ops		= &a6_wake_ops_impl_0,
+	.sbw_init		= a6_sbw_init_imp,
+	.sbw_deinit		= a6_sbw_deinit_imp,
+};
+
+static struct a6_platform_data a6_1_platform_data = {
+	.dev_name		= A6_DEVICE_1,
+	.sbw_tck_gpio	= 115,
+	.sbw_tdio_gpio	= 116,
+	.sbw_ops		= &sbw_ops_impl_1,
+	.wake_ops		= &a6_wake_ops_impl_1,
+	.sbw_init		= a6_sbw_init_imp,
+	.sbw_deinit		= a6_sbw_deinit_imp,
+};
+
+static uint32_t a6_0_config_data[] = {
+		GPIO_CFG(156, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA),
+};
+
+static uint32_t a6_1_config_data[] = {
+		GPIO_CFG(132, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA),
+};
+
+
+static uint32_t a6_0_canwakeup_config_data[] = {
+		GPIO_CFG(37, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA),
+};
+
+static uint32_t a6_1_canwakeup_config_data[] = {
+		GPIO_CFG(94, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA),
+};
+
+static struct i2c_board_info a6_i2c_board_info_0 = {
+	I2C_BOARD_INFO( A6_DEVICE_0, (0x62>>1)),
+	.platform_data = NULL,
+};
+
+static struct i2c_board_info a6_i2c_board_info_1 = {
+	I2C_BOARD_INFO( A6_DEVICE_1, (0x64>>1)),
+	.platform_data = NULL,
+};
+
+#ifdef A6_INTERNAL_WAKE
+ struct a6_internal_wake_interface_data {
+	int wake_enable: 1;
+	// currently restricted to 3 bits: x = [0 - 7] and period = 2^^x
+	int wake_period: 9;
+	int wake_gpio;
+};
+static struct a6_internal_wake_interface_data a6_0_wi_data =
+{
+	.wake_enable = 1,
+	.wake_period = 16,
+};
+
+static struct a6_internal_wake_interface_data a6_1_wi_data =
+{
+	.wake_enable = 1,
+	.wake_period = 16,
+};
+
+static int32_t a6_force_wake(void* data)
+{
+	struct a6_internal_wake_interface_data *pdata = (struct a6_internal_wake_interface_data *)data;
+
+	pr_debug("%s(%d) : A6 force wakeup!\n", __func__, __LINE__);
+	gpio_set_value(pdata->wake_gpio, 1);
+	udelay(1);
+	gpio_set_value(pdata->wake_gpio, 0);
+	udelay(100);
+	gpio_set_value(pdata->wake_gpio, 1);
+
+	msleep(30);
+
+	return 0;
+}
+
+static int a6_force_sleep(void* data)
+{
+	struct a6_internal_wake_interface_data *pdata = (struct a6_internal_wake_interface_data *)data;
+
+	pr_debug("%s(%d) : A6 force sleep!\n", __func__, __LINE__);
+	gpio_set_value(pdata->wake_gpio, 0);
+
+	return 0;
+}
+
+static int a6_internal_wake_enable_state(void* data)
+{
+	return (((struct a6_internal_wake_interface_data *)data)->wake_enable);
+}
+
+static int a6_internal_wake_period(void* data)
+{
+	return (((struct a6_internal_wake_interface_data *)data)->wake_period);
+}
+#endif // #ifdef A6_INTERNAL_WAKE
+
+static void __init init_a6(void)
+{
+	uint32_t* config_data;
+	int32_t config_data_size;
+
+	printk(KERN_ERR "Registering a6_0 device.\n");
+
+	if ((board_is_topaz_wifi() && (board_type > TOPAZ_EVT3)) ||
+		(board_is_topaz_3g() && (board_type > TOPAZ3G_DVT)) ||
+		(board_is_opal_3g() && (board_type > OPAL3G_EVT1))) {
+		a6_0_platform_data.pwr_gpio = 37;
+		a6_1_platform_data.pwr_gpio = 94;
+	} else {
+		a6_0_platform_data.pwr_gpio = 156;
+		a6_1_platform_data.pwr_gpio= 132;
+	}
+
+	if (board_is_topaz_wifi()) {
+		a6_0_platform_data.sbw_tck_gpio = 157;
+		a6_0_platform_data.sbw_tdio_gpio = 158;
+		a6_0_platform_data.sbw_init_gpio_config = a6_0_sbw_init_gpio_config_topaz;
+		a6_0_platform_data.sbw_init_gpio_config_size = ARRAY_SIZE(a6_0_sbw_init_gpio_config_topaz);
+		a6_0_platform_data.sbw_deinit_gpio_config = a6_0_sbw_deinit_gpio_config_topaz;
+		a6_0_platform_data.sbw_deinit_gpio_config_size = ARRAY_SIZE(a6_0_sbw_deinit_gpio_config_topaz);
+		
+		a6_1_platform_data.sbw_wkup_gpio = 141;
+		a6_1_platform_data.sbw_init_gpio_config = a6_1_sbw_init_gpio_config_topaz;
+		a6_1_platform_data.sbw_init_gpio_config_size = ARRAY_SIZE(a6_1_sbw_init_gpio_config_topaz);
+		a6_1_platform_data.sbw_deinit_gpio_config = a6_1_sbw_deinit_gpio_config_topaz;
+		a6_1_platform_data.sbw_deinit_gpio_config_size = ARRAY_SIZE(a6_1_sbw_deinit_gpio_config_topaz);
+		
+	} else {
+		if ((board_is_topaz_3g() && (board_type > TOPAZ3G_DVT)) || (board_is_opal_3g() && (board_type > OPAL3G_EVT1))) {
+			a6_0_platform_data.sbw_tck_gpio = 156;
+		} else {
+			a6_0_platform_data.sbw_tck_gpio = 68;
+		}
+		a6_0_platform_data.sbw_tdio_gpio = 170;
+		if ((board_is_topaz_3g() && (board_type > TOPAZ3G_DVT)) || (board_is_opal_3g() && (board_type > OPAL3G_EVT1))) {
+			a6_0_platform_data.sbw_init_gpio_config = a6_0_sbw_init_gpio_config_topaz3g_6thbuild;
+			a6_0_platform_data.sbw_init_gpio_config_size = ARRAY_SIZE(a6_0_sbw_init_gpio_config_topaz3g_6thbuild);
+			a6_0_platform_data.sbw_deinit_gpio_config = a6_0_sbw_deinit_gpio_config_topaz3g_6thbuild;
+			a6_0_platform_data.sbw_deinit_gpio_config_size = ARRAY_SIZE(a6_0_sbw_deinit_gpio_config_topaz3g_6thbuild);
+		} else {
+			a6_0_platform_data.sbw_init_gpio_config = a6_0_sbw_init_gpio_config;
+			a6_0_platform_data.sbw_init_gpio_config_size = ARRAY_SIZE(a6_0_sbw_init_gpio_config);
+			a6_0_platform_data.sbw_deinit_gpio_config = a6_0_sbw_deinit_gpio_config;
+			a6_0_platform_data.sbw_deinit_gpio_config_size = ARRAY_SIZE(a6_0_sbw_deinit_gpio_config);
+		}
+		a6_1_platform_data.sbw_wkup_gpio = 78;
+		a6_1_platform_data.sbw_init_gpio_config = a6_1_sbw_init_gpio_config;
+		a6_1_platform_data.sbw_init_gpio_config_size = ARRAY_SIZE(a6_1_sbw_init_gpio_config);
+		a6_1_platform_data.sbw_deinit_gpio_config = a6_1_sbw_deinit_gpio_config;
+		a6_1_platform_data.sbw_deinit_gpio_config_size = ARRAY_SIZE(a6_1_sbw_deinit_gpio_config);
+	}
+
+	a6_i2c_board_info_0.platform_data = &a6_0_platform_data;
+	i2c_register_board_info(MSM_GSBI8_QUP_I2C_BUS_ID, &a6_i2c_board_info_0, 1);
+	
+	a6_i2c_board_info_1.platform_data = &a6_1_platform_data;
+	i2c_register_board_info(MSM_GSBI8_QUP_I2C_BUS_ID, &a6_i2c_board_info_1, 1);
+
+	if (board_is_topaz_wifi()) {
+		config_data = a6_0_sbw_init_gpio_config_topaz;
+		config_data_size = ARRAY_SIZE(a6_0_sbw_init_gpio_config_topaz);
+	} else {
+		if ((board_is_topaz_3g() && (board_type > TOPAZ3G_DVT)) || (board_is_opal_3g() && (board_type > OPAL3G_EVT1))) {
+			config_data = a6_0_sbw_init_gpio_config_topaz3g_6thbuild;
+			config_data_size = ARRAY_SIZE(a6_0_sbw_init_gpio_config_topaz3g_6thbuild);
+		} else {
+			config_data = a6_0_sbw_init_gpio_config;
+			config_data_size = ARRAY_SIZE(a6_0_sbw_init_gpio_config);
+		}
+	}
+	config_gpio_tlmm_table(config_data, config_data_size);
+
+	if (board_is_topaz_wifi()) {
+		config_data = a6_1_sbw_init_gpio_config_topaz;
+		config_data_size = ARRAY_SIZE(a6_1_sbw_init_gpio_config_topaz);
+	} else {
+		config_data = a6_1_sbw_init_gpio_config;
+		config_data_size = ARRAY_SIZE(a6_1_sbw_init_gpio_config);
+	}
+	config_gpio_tlmm_table(config_data, config_data_size);
+
+	/* no change for dvt boards */
+	if ((board_is_topaz_wifi() && (board_type > TOPAZ_EVT3)) ||
+		(board_is_topaz_3g() && (board_type > TOPAZ3G_DVT)) ||
+		(board_is_opal_3g() && (board_type > OPAL3G_EVT1))) {
+		config_data = a6_0_canwakeup_config_data;
+		config_data_size = ARRAY_SIZE(a6_0_canwakeup_config_data);
+		config_gpio_tlmm_table(config_data, config_data_size);
+
+		config_data = a6_1_canwakeup_config_data;
+		config_data_size = ARRAY_SIZE(a6_1_canwakeup_config_data);
+		config_gpio_tlmm_table(config_data, config_data_size);
+	} else {
+		config_data = a6_0_config_data;
+		config_data_size = ARRAY_SIZE(a6_0_config_data);
+		config_gpio_tlmm_table(config_data, config_data_size);
+
+		config_data = a6_1_config_data;
+		config_data_size = ARRAY_SIZE(a6_1_config_data);
+		config_gpio_tlmm_table(config_data, config_data_size);
+	}
+
+	a6_0_platform_data.wake_ops = NULL;
+	a6_1_platform_data.wake_ops = NULL;
+#if A6_INTERNAL_WAKE
+	((struct a6_platform_data*)a6_i2c_board_info_0.platform_data)->wake_ops = &a6_wake_ops_impl_0;
+	a6_0_wi_data.wake_gpio = ((struct a6_platform_data *)a6_i2c_board_info_0.platform_data)->sbw_wkup_gpio;
+	a6_wake_ops_impl_0.data = &a6_0_wi_data;
+	a6_wake_ops_impl_0.enable_periodic_wake = NULL;
+	a6_wake_ops_impl_0.disable_periodic_wake = NULL;
+	a6_wake_ops_impl_0.internal_wake_enable_state = &a6_internal_wake_enable_state;
+	a6_wake_ops_impl_0.internal_wake_period = &a6_internal_wake_period;
+	a6_wake_ops_impl_0.force_wake = &a6_force_wake;
+	a6_wake_ops_impl_0.force_sleep = &a6_force_sleep;
+
+	((struct a6_platform_data*)a6_i2c_board_info_1.platform_data)->wake_ops = &a6_wake_ops_impl_1;
+	a6_1_wi_data.wake_gpio = ((struct a6_platform_data *)a6_i2c_board_info_1.platform_data)->sbw_wkup_gpio;
+	a6_wake_ops_impl_1.data = &a6_1_wi_data;
+	a6_wake_ops_impl_1.enable_periodic_wake = NULL;
+	a6_wake_ops_impl_1.disable_periodic_wake = NULL;
+	a6_wake_ops_impl_1.internal_wake_enable_state = &a6_internal_wake_enable_state;
+	a6_wake_ops_impl_1.internal_wake_period = &a6_internal_wake_period;
+	a6_wake_ops_impl_1.force_wake = &a6_force_wake;
+	a6_wake_ops_impl_1.force_sleep = &a6_force_sleep;
+#else
+	((struct a6_platform_data*)a6_i2c_board_info_0.platform_data)->wake_ops = NULL;
+	((struct a6_platform_data*)a6_i2c_board_info_1.platform_data)->wake_ops = NULL;
+
+#endif
+
+	sbw_ops_impl_0.a6_per_device_interface.SetSBWTCK = &a6_0_set_sbwtck;
+	sbw_ops_impl_0.a6_per_device_interface.ClrSBWTCK = &a6_0_clr_sbwtck;
+	sbw_ops_impl_0.a6_per_device_interface.SetSBWTDIO = &a6_0_set_sbwtdio;
+	sbw_ops_impl_0.a6_per_device_interface.ClrSBWTDIO = &a6_0_clr_sbwtdio;
+	sbw_ops_impl_0.a6_per_device_interface.SetInSBWTDIO = &a6_0_set_in_sbwtdio;
+	sbw_ops_impl_0.a6_per_device_interface.SetOutSBWTDIO = &a6_0_set_out_sbwtdio;
+	sbw_ops_impl_0.a6_per_device_interface.GetSBWTDIO = &a6_0_get_sbwtdio;
+	sbw_ops_impl_0.a6_per_device_interface.SetSBWAKEUP = &a6_0_set_sbwakeup;
+	sbw_ops_impl_0.a6_per_device_interface.ClrSBWAKEUP = &a6_0_clr_sbwakeup;
+	sbw_ops_impl_0.a6_per_target_interface.delay = a6_delay_impl;
+
+	sbw_ops_impl_1.a6_per_device_interface.SetSBWTCK = &a6_1_set_sbwtck;
+	sbw_ops_impl_1.a6_per_device_interface.ClrSBWTCK = &a6_1_clr_sbwtck;
+	sbw_ops_impl_1.a6_per_device_interface.SetSBWTDIO = &a6_1_set_sbwtdio;
+	sbw_ops_impl_1.a6_per_device_interface.ClrSBWTDIO = &a6_1_clr_sbwtdio;
+	sbw_ops_impl_1.a6_per_device_interface.SetInSBWTDIO = &a6_1_set_in_sbwtdio;
+	sbw_ops_impl_1.a6_per_device_interface.SetOutSBWTDIO = &a6_1_set_out_sbwtdio;
+	sbw_ops_impl_1.a6_per_device_interface.GetSBWTDIO = &a6_1_get_sbwtdio;
+	sbw_ops_impl_1.a6_per_device_interface.SetSBWAKEUP = &a6_1_set_sbwakeup;
+	sbw_ops_impl_1.a6_per_device_interface.ClrSBWAKEUP = &a6_1_clr_sbwakeup;
+	sbw_ops_impl_1.a6_per_target_interface.delay = a6_delay_impl;
+}
+#endif // CONFIG_A6
+
+
+
 #if defined(CONFIG_USB_GADGET_MSM_72K) || defined(CONFIG_USB_EHCI_MSM_72K)
 static struct msm_otg_platform_data msm_otg_pdata;
 static struct regulator *ldo6_3p3;
@@ -1638,6 +2466,10 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 	.init_vddcx              = msm_hsusb_init_vddcx,
 #ifdef CONFIG_BATTERY_MSM8X60
 	.chg_vbus_draw = msm_charger_vbus_draw,
+#endif
+#if defined(CONFIG_CHARGER_MAX8903)
+	.chg_connected	 = msm_hsusb_chg_connected,
+	.chg_vbus_draw	 = msm_hsusb_chg_vbus_draw,
 #endif
 };
 #endif
@@ -5771,8 +6603,14 @@ static struct platform_device *surf_devices[] __initdata = {
 #ifdef CONFIG_BATTERY_MSM
 	&msm_batt_device,
 #endif
+#ifdef CONFIG_CHARGER_MAX8903
+	&max8903_charger_device,
+#endif
 #ifdef CONFIG_KEYBOARD_GPIO
 	&msm_gpio_keys,
+#endif
+#ifdef CONFIG_HRES_COUNTER
+	&hres_counter_device,
 #endif
 #ifdef CONFIG_ANDROID_PMEM
 #ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
@@ -11703,6 +12541,22 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 		msm8x60_init_gpiomux(tenderloin_gpiomux_cfgs);
 #endif
 	}
+
+#ifdef CONFIG_CHARGER_MAX8903
+	if (board_is_topaz_wifi()) {
+		printk("%s: setting USUS_pin_polarity = 1\n", __func__);
+		max8903_charger_device.dev.platform_data = &max8903_charger_pdata_topaz;
+		if (board_type > TOPAZ_EVT1) {
+			max8903_charger_pdata_topaz.USUS_pin_polarity = 1;
+		}
+	} else {
+		if (board_is_opal_3g() || board_is_opal_wifi() || (board_is_topaz_3g() && (board_type >= TOPAZ3G_EVT1)) ) {
+			max8903_charger_pdata.USUS_pin_polarity = 1;
+		}
+		max8903_charger_device.dev.platform_data = &max8903_charger_pdata;
+	}
+#endif
+
 	msm8x60_init_uart12dm();
 	msm8x60_init_mmc();
 
@@ -11899,6 +12753,10 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 
 	if (machine_is_msm8x60_fusion() || machine_is_msm8x60_fusn_ffa())
 		msm_fusion_setup_pinctrl();
+
+#ifdef CONFIG_A6
+	init_a6();
+#endif
 }
 
 static void __init msm8x60_rumi3_init(void)
