@@ -35,6 +35,14 @@
 #include "msm_watchdog.h"
 #include "timer.h"
 
+#define RESTART_REASON_SHUTDOWN   0x6f656d00
+#define RESTART_REASON_RECOVER    0x6f656d11
+#define RESTART_REASON_PANIC      0x6f656d22
+#define RESTART_REASON_DFU        0x6f656d33
+#define RESTART_REASON_REBOOT     0x6f656d44
+#define RESTART_REASON_LATE_BOOT  0x6f656d55
+#define RESTART_REASON_UPDATE     0x6f656d66
+
 #define WDT0_RST	0x38
 #define WDT0_EN		0x40
 #define WDT0_BARK_TIME	0x4C
@@ -210,6 +218,20 @@ void arch_reset(char mode, const char *cmd)
 			unsigned long code;
 			code = simple_strtoul(cmd + 4, NULL, 16) & 0xff;
 			__raw_writel(0x6f656d00 | code, restart_reason);
+		// Palm specific start
+		} else if (!strcmp(cmd, "shutdown")) {
+			__raw_writel(RESTART_REASON_SHUTDOWN, restart_reason);
+		} else if (!strcmp(cmd, "recover")) {
+			__raw_writel(RESTART_REASON_RECOVER, restart_reason);
+		} else if (!strcmp(cmd, "panic")) {
+			__raw_writel(RESTART_REASON_PANIC, restart_reason);
+		} else if (!strcmp(cmd, "dfu")) {
+			__raw_writel(RESTART_REASON_DFU, restart_reason);
+		} else if (!strcmp(cmd, "reboot")) {
+			__raw_writel(RESTART_REASON_REBOOT, restart_reason);
+		} else if (!strcmp(cmd, "update")) {
+			__raw_writel(RESTART_REASON_UPDATE, restart_reason);
+		// Palm specific end
 		} else {
 			__raw_writel(0x77665501, restart_reason);
 		}
