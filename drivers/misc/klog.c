@@ -33,10 +33,17 @@
 #include <asm/memory.h>
 #include <asm/io.h>
 
+#include <linux/platform_device.h>
+#include <linux/proc_fs.h>
+#include <linux/uaccess.h>
+#include <linux/io.h>
+
 #define MIN(a,b) ((a)<(b) ? (a):(b))
 
 #define KLOG_MAGIC 0x6b6c6f67 // 'klog'
 #define KLOG_VERSION 1
+
+#define CONFIG_KLOG_LAST_LOG 1 // TODO - make configurable later?
 
 extern int log_buf_get_len(void);
 
@@ -64,6 +71,11 @@ struct klog_buffer_header {
 
 static unsigned long klog_phys;
 static unsigned long klog_len;
+
+#ifdef CONFIG_KLOG_LAST_LOG
+static unsigned long last_log_size;
+static char *last_log_buffer;
+#endif
 
 static int init_done = 0;
 
@@ -220,13 +232,109 @@ void klog_write_char(const char c)
 	spin_unlock_irqrestore(&klog_lock, flags);
 }
 
+#ifdef CONFIG_KLOG_LAST_LOG
+static ssize_t last_log_read(struct file *file, char __user *buf,
+				    size_t len, loff_t *offset)
+{
+	loff_t pos = *offset;
+	ssize_t count;
+
+	if (pos >= last_log_size)
+		return 0;
+
+	count = min(len, (size_t)(last_log_size - pos));
+	if (copy_to_user(buf, last_log_buffer + pos, count))
+		return -EFAULT;
+
+	*offset += count;
+	return count;
+}
+
+
+static const struct file_operations last_log_file_ops = {
+	.owner = THIS_MODULE,
+	.read = last_log_read,
+};
+
+void setup_last_log_proc_entry(void)
+{
+	struct proc_dir_entry *entry;
+	unsigned last_klog_num;
+	struct klog_buffer_header *last_klog_buf;
+	char *status_msg = NULL;
+
+	char invalid_msg[] = "***KLOG INVALID***\n\0";
+	char empty_msg[] = "***KLOG EMPTY***\n\0";
+
+	if (klog->current_buf == 0) {
+		last_klog_num = klog->buf_count - 1;
+	} else {
+		last_klog_num = klog->current_buf - 1;
+	}
+
+	last_klog_buf = get_kbuf(last_klog_num);
+
+	if (last_klog_buf->magic != KLOG_BUFFER_MAGIC) {
+		status_msg = invalid_msg;
+	}
+	else if (last_klog_buf->tail == last_klog_buf->head) {
+		status_msg = empty_msg;
+		return;
+	}
+	else if (last_klog_buf->head > last_klog_buf->tail) {
+		last_log_size = last_klog_buf->head - last_klog_buf->tail;
+	}
+	else {
+		last_log_size = last_klog_buf->len - 1;
+	}
+
+	if (status_msg) last_log_size = strlen(status_msg);
+
+	last_log_buffer = kmalloc(last_log_size, GFP_KERNEL);
+	if (last_log_buffer == NULL) {
+		printk(KERN_ERR
+		       "klog: failed to allocate buffer for last_klog\n");
+		last_log_size = 0;
+		return;
+	}
+
+	if (status_msg) {
+		memcpy(last_log_buffer, status_msg, last_log_size);
+	}
+	else if (last_klog_buf->head > last_klog_buf->tail) {
+		memcpy(last_log_buffer,
+				last_klog_buf->data + last_klog_buf->tail,
+				last_log_size);
+	}
+	else {
+		memcpy(last_log_buffer,
+				last_klog_buf->data + last_klog_buf->tail,
+				last_klog_buf->len - last_klog_buf->tail);
+		memcpy(last_log_buffer + (last_klog_buf->len - last_klog_buf->tail),
+				last_klog_buf->data,
+				last_klog_buf->head);
+	}
+
+	entry = create_proc_entry("last_klog", S_IFREG | S_IRUGO, NULL);
+
+	if (!entry) {
+		printk(KERN_ERR "klog: failed to create last_klog proc entry\n");
+		kfree(last_log_buffer);
+		last_log_buffer = NULL;
+		return;
+	}
+
+	entry->proc_fops = &last_log_file_ops;
+	entry->size = last_log_size;
+}
+#endif
+
 static int __init klog_init(void)
 {
 	void *base;
 	unsigned long flags;
 
-	printk("klog_init: entry\n");
-	printk("klog_init: phys buffer is at 0x%lx\n", klog_phys);
+	printk(KERN_INFO "klog_init: phys buffer at 0x%lx\n", klog_phys);
 
 	if (klog_phys == 0 || klog_len == 0)
 	    return 0;
@@ -241,17 +349,17 @@ static int __init klog_init(void)
 	/* set up the klog structure */
 	klog_buffer = (char *)base;
 	klog = (struct klog_header *)klog_buffer;
-	printk("klog_init: virt address is %p\n", klog);
+	printk(KERN_INFO "klog_init: virt address at 0x%p\n", klog);
 
-	printk("klog_init: magic 0x%x version 0x%x\n", klog->magic, klog->ver);
+	// printk(KERN_INFO "klog_init: magic 0x%x version 0x%x\n", klog->magic, klog->ver);
 
 	/* check to see if it's valid */
 	if (klog->magic != KLOG_MAGIC || klog->ver != KLOG_VERSION) {
-	    printk("klog_init: didn't find existing klog\n");
+	    printk(KERN_ERR "klog_init: valid klog not found\n");
 	    return 0;
 	}
 
-	printk("found klog, len %u, using buffer number %d\n", klog->len, klog->current_buf);
+	printk(KERN_INFO "klog_init: found valid klog, len %u\n", klog->len);
 
 	klog_buf = get_kbuf(klog->current_buf);
 
@@ -263,7 +371,12 @@ static int __init klog_init(void)
 
 	spin_unlock_irqrestore(&klog_lock, flags);
 
-	printk(KERN_INFO "welcome to klog, buffer at %p, length %d\n", klog_buf, klog_buf->len);
+	printk(KERN_INFO "klog_init: using buffer %u at 0x%p, length %d\n", 
+			klog->current_buf, klog_buf, klog_buf->len);
+
+#ifdef CONFIG_KLOG_LAST_LOG
+	setup_last_log_proc_entry();
+#endif
 
 	return 0;
 }
