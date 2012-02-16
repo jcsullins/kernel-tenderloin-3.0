@@ -546,4 +546,14 @@ config BOSCH_BMA150
           If you say yes here you get support for Bosch Sensortec's
           acceleration sensors SMB380/BMA150.
 
+config INPUT_LSM303DLH
+	tristate "ST LSM303DLH 3-axis accelerometer and 3-axis magnetometer"
+	depends on I2C
+    depends on INPUT_POLLDEV
+	default n
+	help
+	  This driver provides support for the LSM303DLH chip which includes a
+	  3-axis accelerometer and a 3-axis magnetometer.
+
 endif
+
