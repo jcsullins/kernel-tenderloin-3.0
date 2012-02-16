@@ -8898,13 +8898,13 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
     {
         I2C_TENDERLOIN,
         MSM_GSBI3_QUP_I2C_BUS_ID,
-        &lsm303dlh_acc_i2c_board_info,
+        lsm303dlh_acc_i2c_board_info,
         ARRAY_SIZE(lsm303dlh_acc_i2c_board_info),
     },
     {
         I2C_TENDERLOIN,
         MSM_GSBI3_QUP_I2C_BUS_ID,
-        &lsm303dlh_mag_i2c_board_info,
+        lsm303dlh_mag_i2c_board_info,
         ARRAY_SIZE(lsm303dlh_mag_i2c_board_info),
     },
 #endif
@@ -8936,6 +8936,11 @@ static void fixup_i2c_configs(void)
 		pm8901_vreg_init_pdata[PM8901_VREG_ID_MPP0].active_high = 0;
 	else
 		pm8901_vreg_init_pdata[PM8901_VREG_ID_MPP0].active_high = 1;
+#ifdef CONFIG_INPUT_LSM303DLH
+	if (board_is_topaz_3g()) {
+		lsm303dlh_acc_pdata.negate_y = 1;
+	}
+#endif /* CONFIG_INPUT_LSM303DLH */
 #endif
 }
 
