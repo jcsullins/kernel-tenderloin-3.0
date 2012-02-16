@@ -3909,17 +3909,80 @@ static struct platform_device board_cy8ctma395_device = {
          },
 };
 
-static int tenderloin_tp_init(int on)
+static void init_mxt1386_ts_hw(void)
 {
-	int ret;
-	int tp_gpios[] = {GPIO_CTP_SCL, GPIO_CTP_SDA};
-	ret = configure_gpiomux_gpios(on, tp_gpios, ARRAY_SIZE(tp_gpios));
-	if (ret < 0) {
-		printk(KERN_ERR "%s: Error %d while configuring touch panel gpios.\n", __func__, ret);
-	}
-	return ret;
-}
+	int rc;
+	int irq_pin, reset_pin;
+	unsigned irq_cfg;
 
+	reset_pin = MXT1386_TS_PWR_RST_GPIO;
+
+	if (board_is_topaz_wifi())
+	{
+		irq_pin = MXT1386_TS_PEN_IRQ_GPIO;
+	}
+	else if (board_is_topaz_3g())
+	{
+		irq_pin = MXT1386_TS_PEN_IRQ_GPIO_3G;
+	}
+	else if (board_is_opal_3g() || board_is_opal_wifi())
+	{
+		irq_pin = MXT1386_TS_PEN_IRQ_GPIO_3G;
+	}
+	else
+	{
+		printk(KERN_ERR "%s: Invalid board_type. Setup failed.\n", __func__);
+		return;
+	}
+
+	irq_cfg = GPIO_CFG(irq_pin,  0, GPIO_CFG_INPUT,
+						GPIO_CFG_NO_PULL, GPIO_CFG_2MA);
+
+	rc = gpio_request(reset_pin, "touch_reset");
+	if (rc)
+	{
+		pr_err("gpio_request failed on pin %d (rc=%d)\n",
+				reset_pin, rc);
+		goto err_gpioconfig;
+	}
+
+	/* pull reset high */
+	gpio_set_value(reset_pin, 1);
+	mdelay(100);
+
+	// power reset
+	gpio_direction_output(reset_pin, 0);
+	mdelay(100);
+	gpio_direction_output(reset_pin, 1);
+	mdelay(100);
+
+	rc = gpio_request(irq_pin, "msm_touchpad_irq");
+	if (rc) {
+		pr_err("gpio_request failed on pin %d (rc=%d)\n",
+				irq_pin, rc);
+		goto err_gpioconfig;
+	}
+
+	rc = gpio_tlmm_config(irq_cfg, 0);
+	if (rc) {
+		pr_err("gpio_tlmm_config failed on pin %d (rc=%d)\n",
+				irq_pin, rc);
+		goto err_gpioconfig;
+	}
+
+	rc = gpio_direction_input(irq_pin);
+	if (rc) {
+		pr_err("gpio_direction_input failed on pin %d (rc=%d)\n",
+					irq_pin, rc);
+		goto err_gpioconfig;
+	}
+
+	return;
+
+err_gpioconfig:
+	gpio_free(reset_pin);
+	gpio_free(irq_pin);
+}
 #endif /* CONFIG_TOUCHSCREEN_CY8CTMA395[_MODULE] */
 
 #ifdef CONFIG_USER_PINS
@@ -12854,7 +12917,7 @@ static void __init msm8x60_init(struct msm_board_data *board_data)
 
 #if defined (CONFIG_TOUCHSCREEN_CY8CTMA395) \
 	|| defined (CONFIG_TOUCHSCREEN_CY8CTMA395_MODULE)
-		tenderloin_tp_init (true);
+		init_mxt1386_ts_hw();
 #endif
 
 #ifdef CONFIG_MSM_DSPS
