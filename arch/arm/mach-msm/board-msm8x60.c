@@ -135,6 +135,10 @@
 #include <linux/i2c/lsm303dlh.h>
 #endif
 
+#ifdef CONFIG_INPUT_ISL29023
+#include <linux/isl29023.h>
+#endif
+
 // Pointer to topaz/tenderloin opal/shortloin wifi/3G pin arrays
 int *pin_table = NULL;
 
@@ -2090,7 +2094,21 @@ static struct i2c_board_info __initdata lsm303dlh_mag_i2c_board_info[] = {
 };
 #endif // CONFIG_INPUT_LSM303DLH
 
+#ifdef CONFIG_INPUT_ISL29023
+static struct isl29023_platform_data isl29023_pdata = {
+	.rext = 10,
+	.polled = 1,
+	.poll_interval = 500,
+};
 
+static struct i2c_board_info __initdata isl29023_i2c_board_info[] = {
+	{
+		I2C_BOARD_INFO ( "isl29023", 0x44),
+		.irq = -1,
+		.platform_data = &isl29023_pdata,
+	},
+};
+#endif // CONFIG_INPUT_ISL29023
 
 #if defined(CONFIG_USB_GADGET_MSM_72K) || defined(CONFIG_USB_EHCI_MSM_72K)
 static struct msm_otg_platform_data msm_otg_pdata;
@@ -9035,6 +9053,14 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
         lsm303dlh_mag_i2c_board_info,
         ARRAY_SIZE(lsm303dlh_mag_i2c_board_info),
     },
+#endif
+#ifdef CONFIG_INPUT_ISL29023
+	{
+		I2C_TENDERLOIN,
+		MSM_GSBI3_QUP_I2C_BUS_ID,
+		isl29023_i2c_board_info,
+		ARRAY_SIZE(isl29023_i2c_board_info),
+	},
 #endif
 };
 #endif /* CONFIG_I2C */
