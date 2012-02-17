@@ -38,6 +38,9 @@
 
 #include <linux/i2c/lsm303dlh.h>
 
+#ifndef DEBUG
+#define DEBUG 0
+#endif
 
 /** Maximum polled-device-reported g value */
 #define H_MAX			8100
@@ -958,8 +961,8 @@ static int lsm303dlh_mag_remove(struct i2c_client *client)
 static int lsm303dlh_mag_suspend(struct device *dev)
 {
 	#ifdef CONFIG_SUSPEND
-	struct i2c_client *client = to_i2c_client(dev);
-	struct lsm303dlh_data *gyro = i2c_get_clientdata(client);
+	// struct i2c_client *client = to_i2c_client(dev);
+	// struct lsm303dlh_data *gyro = i2c_get_clientdata(client);
 	#if DEBUG
 	pr_info(KERN_INFO "lsm303dlh_suspend\n");
 	#endif
@@ -971,8 +974,8 @@ static int lsm303dlh_mag_suspend(struct device *dev)
 static int lsm303dlh_mag_resume(struct device *dev)
 {
 	#ifdef CONFIG_SUSPEND
-	struct i2c_client *client = to_i2c_client(dev);
-	struct lsm303dlh_data *mag = i2c_get_clientdata(client);
+	// struct i2c_client *client = to_i2c_client(dev);
+	// struct lsm303dlh_data *mag = i2c_get_clientdata(client);
 	#if DEBUG
 	pr_info(KERN_INFO "lsm303dlh_resume\n");
 	#endif
