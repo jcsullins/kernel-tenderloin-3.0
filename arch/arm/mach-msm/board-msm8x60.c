@@ -4020,13 +4020,6 @@ static void init_mxt1386_ts_hw(void)
 	gpio_direction_output(reset_pin, 1);
 	mdelay(100);
 
-	rc = gpio_request(irq_pin, "msm_touchpad_irq");
-	if (rc) {
-		pr_err("gpio_request failed on pin %d (rc=%d)\n",
-				irq_pin, rc);
-		goto err_gpioconfig;
-	}
-
 	rc = gpio_tlmm_config(irq_cfg, 0);
 	if (rc) {
 		pr_err("gpio_tlmm_config failed on pin %d (rc=%d)\n",
@@ -4034,18 +4027,10 @@ static void init_mxt1386_ts_hw(void)
 		goto err_gpioconfig;
 	}
 
-	rc = gpio_direction_input(irq_pin);
-	if (rc) {
-		pr_err("gpio_direction_input failed on pin %d (rc=%d)\n",
-					irq_pin, rc);
-		goto err_gpioconfig;
-	}
-
 	return;
 
 err_gpioconfig:
 	gpio_free(reset_pin);
-	gpio_free(irq_pin);
 }
 #endif /* CONFIG_TOUCHSCREEN_CY8CTMA395[_MODULE] */
 
