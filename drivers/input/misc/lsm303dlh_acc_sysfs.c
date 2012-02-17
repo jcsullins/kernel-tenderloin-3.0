@@ -406,7 +406,7 @@ static void lsm303dlh_acc_irq1_work_func(struct work_struct *work)
 	;
 	/*  */
 	printk(KERN_INFO "%s: IRQ1 triggered\n", LSM303DLH_ACC_DEV_NAME);
-exit:
+//exit:
 	enable_irq(acc->irq1);
 }
 
@@ -421,7 +421,7 @@ static void lsm303dlh_acc_irq2_work_func(struct work_struct *work)
 	/*  */
 
 	printk(KERN_INFO "%s: IRQ2 triggered\n", LSM303DLH_ACC_DEV_NAME);
-exit:
+//exit:
 	enable_irq(acc->irq2);
 }
 
@@ -1436,7 +1436,7 @@ static int __init lsm303dlh_acc_init(void)
 
 static void __exit lsm303dlh_acc_exit(void)
 {
-	#if DEBUG
+	#ifdef DEBUG
 	printk(KERN_DEBUG "%s accelerometer driver exit\n",
 						LSM303DLH_ACC_DEV_NAME);
 	#endif
