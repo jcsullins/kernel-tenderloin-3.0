@@ -13271,6 +13271,7 @@ MACHINE_START(TENDERLOIN, "TENDERLOIN")
 	.map_io = msm8x60_map_io,
 	.reserve = msm8x60_reserve,
 	.init_irq = msm8x60_init_irq,
+	.handle_irq = gic_handle_irq,
 	.init_machine = tenderloin_init,
 	.timer = &msm_timer,
 	.init_early = msm8x60_charm_init_early,
