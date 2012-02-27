@@ -39,6 +39,6 @@ struct wm8958_seq_item {
 int adie_codec_wm8958_path_config(u32 path);
 int adie_codec_wm8958_path_run(u32 path);
 int adie_codec_wm8958_path_stop(u32 path);
-void adie_codec_wm8958_poweramp_on(void);
-void adie_codec_wm8958_poweramp_off(void);
+int adie_codec_wm8958_pa_en(u32 en);
+
 #endif

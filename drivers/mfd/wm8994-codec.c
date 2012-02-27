@@ -1441,20 +1441,7 @@ int adie_codec_wm8958_pa_en(u32 en)
 	adie_codec_write(WM8994_GPIO_1,val);
 	return 0;
 }
-
-void adie_codec_wm8958_poweramp_on(void)
-{
-        adie_codec_wm8958_pa_en(1);
-
-}
-EXPORT_SYMBOL(adie_codec_wm8958_poweramp_on);
-
-void adie_codec_wm8958_poweramp_off(void)
-{
-        adie_codec_wm8958_pa_en(0);
-
-}
-EXPORT_SYMBOL(adie_codec_wm8958_poweramp_off);
+EXPORT_SYMBOL(adie_codec_wm8958_pa_en);
 
 int adie_codec_set_device_digital_volume(struct adie_codec_path *path_ptr,
 		u32 num_channels, u32 vol_percentage /* in percentage */)

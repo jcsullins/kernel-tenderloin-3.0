@@ -456,7 +456,9 @@ static int snddev_icodec_open_rx(struct snddev_icodec_state *icodec)
 	wake_unlock(&drv->rx_idlelock);
 	return 0;
 
+#ifndef CONFIG_MFD_WM8958
 error_pamp:
+#endif
 error_adie:
 #ifndef CONFIG_MFD_WM8958
 	clk_disable(drv->rx_osrclk);

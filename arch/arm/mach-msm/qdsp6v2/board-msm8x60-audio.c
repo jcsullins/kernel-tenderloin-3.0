@@ -330,6 +330,17 @@ static int config_class_d1_gpio(int enable)
 
 static atomic_t pamp_ref_cnt;
 
+static int adie_codec_wm8958_poweramp_on(void)
+{
+	adie_codec_wm8958_pa_en(1);
+	return 0;
+}
+
+static void adie_codec_wm8958_poweramp_off(void)
+{
+	adie_codec_wm8958_pa_en(0);
+}
+
 static int msm_snddev_poweramp_on(void)
 {
 	int rc;
