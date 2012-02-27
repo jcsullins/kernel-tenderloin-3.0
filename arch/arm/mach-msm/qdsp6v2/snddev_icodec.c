@@ -30,6 +30,14 @@
 #include <sound/apr_audio.h>
 #include "snddev_icodec.h"
 
+#ifdef CONFIG_MFD_WM8958
+#include <linux/mfd/wm8994/wm8958_topaz_profile.h>
+#include <linux/string.h>
+#include <linux/gpio.h>
+static struct delayed_work timer_work;
+static struct snddev_icodec_state *icodec_now;
+#endif
+
 #define SNDDEV_ICODEC_PCM_SZ 32 /* 16 bit / sample stereo mode */
 #define SNDDEV_ICODEC_MUL_FACTOR 3 /* Multi by 8 Shift by 3  */
 #define SNDDEV_ICODEC_CLK_RATE(freq) \
@@ -42,6 +50,10 @@
    36mA - 56mA */
 #define SNDDEV_VREG_LOW_POWER_LOAD (36000)
 #define SNDDEV_VREG_HIGH_POWER_LOAD (56000)
+
+#ifdef CONFIG_MFD_WM8958
+#undef CONFIG_DEBUG_FS
+#endif
 
 int msm_codec_i2s_slave_mode;
 
@@ -93,6 +105,13 @@ struct regulator *vreg_init(void)
 		return NULL;
 }
 
+#ifdef CONFIG_MFD_WM8958
+static void timer_worker( struct work_struct *work)
+{
+	icodec_now->data->pamp_on();
+}
+#endif
+
 static void vreg_deinit(struct regulator *vreg)
 {
 	regulator_put(vreg);
@@ -119,6 +138,8 @@ static void vreg_mode_vote(struct regulator *vreg, int enable, int mode)
 			pr_err("%s:Disabling regulator failed\n", __func__);
 	}
 }
+
+#ifndef CONFIG_MFD_WM8958
 
 struct msm_cdcclk_ctl_state {
 	unsigned int rx_mclk;
@@ -206,6 +227,14 @@ static int msm_cdcclk_ctl_probe(struct platform_device *pdev)
 	}
 	return rc;
 }
+#else
+static int msm_snddev_rx_mclk_request(void) {return 0;}
+static int msm_snddev_tx_mclk_request(void) {return 0;}
+static void msm_snddev_tx_mclk_free(void) {}
+static void msm_snddev_rx_mclk_free(void) {}
+static int msm_cdcclk_ctl_probe(struct platform_device *pdev) {return 0;}
+#endif
+
 static struct platform_driver msm_cdcclk_ctl_driver = {
 	.probe = msm_cdcclk_ctl_probe,
 	.driver = { .name = "msm_cdcclk_ctl"}
@@ -294,6 +323,9 @@ static int snddev_icodec_open_rx(struct snddev_icodec_state *icodec)
 	int trc;
 	int afe_channel_mode;
 	union afe_port_config afe_config;
+#ifdef CONFIG_MFD_WM8958
+	int codec_path;
+#endif
 	struct snddev_icodec_drv_state *drv = &snddev_icodec_drv;
 
 	wake_lock(&drv->rx_idlelock);
@@ -344,6 +376,17 @@ static int snddev_icodec_open_rx(struct snddev_icodec_state *icodec)
 	if (icodec->data->voltage_on)
 		icodec->data->voltage_on();
 
+#ifdef CONFIG_MFD_WM8958
+	codec_path = SPEAKER_RX;
+	if (!strcmp (icodec->data->name,"headset_stereo_rx"))
+		codec_path = HEADSET_RX;
+	if (!strcmp(icodec->data->name ,"speaker_stereo_rx"))
+		codec_path = SPEAKER_RX;
+	if (!strcmp(icodec->data->name ,"headset_stereo_speaker_stereo_rx"))
+		codec_path = SPEAKER_HEADSET_RX;
+	pr_err("codec path = %d \n",codec_path);
+	adie_codec_wm8958_path_config(codec_path);
+#else
 	/* Configure ADIE */
 	trc = adie_codec_open(icodec->data->profile, &icodec->adie_path);
 	if (IS_ERR_VALUE(trc))
@@ -354,6 +397,7 @@ static int snddev_icodec_open_rx(struct snddev_icodec_state *icodec)
 	/* OSR default to 256, can be changed for power optimization
 	 * If OSR is to be changed, need clock API for setting the divider
 	 */
+#endif
 
 	switch (icodec->data->channel_mode) {
 	case 2:
@@ -377,6 +421,9 @@ static int snddev_icodec_open_rx(struct snddev_icodec_state *icodec)
 	if (trc < 0)
 		pr_err("%s: afe open failed, trc = %d\n", __func__, trc);
 
+#ifdef CONFIG_MFD_WM8958
+	adie_codec_wm8958_path_run(codec_path);
+#else
 	/* Enable ADIE */
 	if (icodec->adie_path) {
 		adie_codec_proceed_stage(icodec->adie_path,
@@ -389,13 +436,19 @@ static int snddev_icodec_open_rx(struct snddev_icodec_state *icodec)
 		adie_codec_set_master_mode(icodec->adie_path, 1);
 	else
 		adie_codec_set_master_mode(icodec->adie_path, 0);
+#endif
 
 	/* Enable power amplifier */
 	if (icodec->data->pamp_on) {
+#ifdef CONFIG_MFD_WM8958
+		schedule_delayed_work(&timer_work,msecs_to_jiffies(1000));
+		icodec_now = icodec;
+#else
 		if (icodec->data->pamp_on()) {
 			pr_err("%s: Error turning on rx power\n", __func__);
 			goto error_pamp;
 		}
+#endif
 	}
 
 	icodec->enabled = 1;
@@ -405,7 +458,9 @@ static int snddev_icodec_open_rx(struct snddev_icodec_state *icodec)
 
 error_pamp:
 error_adie:
+#ifndef CONFIG_MFD_WM8958
 	clk_disable(drv->rx_osrclk);
+#endif
 error_invalid_freq:
 
 	pr_err("%s: encounter error\n", __func__);
@@ -419,6 +474,9 @@ static int snddev_icodec_open_tx(struct snddev_icodec_state *icodec)
 	int trc;
 	int afe_channel_mode;
 	union afe_port_config afe_config;
+#ifdef CONFIG_MFD_WM8958
+	int codec_path;
+#endif
 	struct snddev_icodec_drv_state *drv = &snddev_icodec_drv;;
 
 	wake_lock(&drv->tx_idlelock);
@@ -465,6 +523,14 @@ static int snddev_icodec_open_tx(struct snddev_icodec_state *icodec)
 
 	clk_enable(drv->tx_bitclk);
 
+#ifdef CONFIG_MFD_WM8958
+	codec_path = HANDSET_TX;
+	if (!strcmp(icodec->data->name, "handset_tx"))
+		codec_path = HANDSET_TX;
+	if (!strcmp(icodec->data->name, "headset_mono_tx"))
+		codec_path = HEADSET_TX;
+	adie_codec_wm8958_path_config(codec_path);
+#else
 	/* Enable ADIE */
 	trc = adie_codec_open(icodec->data->profile, &icodec->adie_path);
 	if (IS_ERR_VALUE(trc))
@@ -472,6 +538,7 @@ static int snddev_icodec_open_tx(struct snddev_icodec_state *icodec)
 	else
 		adie_codec_setpath(icodec->adie_path,
 					icodec->sample_rate, 256);
+#endif
 
 	switch (icodec->data->channel_mode) {
 	case 2:
@@ -492,12 +559,16 @@ static int snddev_icodec_open_tx(struct snddev_icodec_state *icodec)
 
 	trc = afe_open(icodec->data->copp_id, &afe_config, icodec->sample_rate);
 
+#ifdef CONFIG_MFD_WM8958
+	adie_codec_wm8958_path_run(codec_path);
+#else
 	if (icodec->adie_path) {
 		adie_codec_proceed_stage(icodec->adie_path,
 					ADIE_CODEC_DIGITAL_READY);
 		adie_codec_proceed_stage(icodec->adie_path,
 					ADIE_CODEC_DIGITAL_ANALOG_READY);
 	}
+#endif
 
 	if (msm_codec_i2s_slave_mode)
 		adie_codec_set_master_mode(icodec->adie_path, 1);
@@ -510,10 +581,17 @@ static int snddev_icodec_open_tx(struct snddev_icodec_state *icodec)
 	return 0;
 
 error_invalid_freq:
-
+#ifdef CONFIG_MFD_WM8958
+	if (icodec->data->pamp_off)
+	{
+		icodec->data->pamp_off();
+		cancel_delayed_work(&timer_work);
+		flush_scheduled_work();
+	}
+#else
 	if (icodec->data->pamp_off)
 		icodec->data->pamp_off();
-
+#endif
 	pr_err("%s: encounter error\n", __func__);
 error_pamp:
 	wake_unlock(&drv->tx_idlelock);
@@ -548,15 +626,38 @@ static int snddev_icodec_close_rx(struct snddev_icodec_state *icodec)
 {
 	struct snddev_icodec_drv_state *drv = &snddev_icodec_drv;
 
+#ifdef CONFIG_MFD_WM8958
+	int codec_path;
+#endif
+
 	wake_lock(&drv->rx_idlelock);
 
 	if (drv->snddev_vreg)
 		vreg_mode_vote(drv->snddev_vreg, 0, SNDDEV_HIGH_POWER_MODE);
 
 	/* Disable power amplifier */
+#ifdef CONFIG_MFD_WM8958
+	if (icodec->data->pamp_off)
+	{
+		icodec->data->pamp_off();
+		cancel_delayed_work(&timer_work);
+		flush_scheduled_work();
+	}
+#else
 	if (icodec->data->pamp_off)
 		icodec->data->pamp_off();
+#endif
 
+#ifdef CONFIG_MFD_WM8958
+	codec_path = SPEAKER_RX;
+	if (!strcmp(icodec->data->name, "headset_stereo_rx"))
+		codec_path = HEADSET_RX;
+	if (!strcmp(icodec->data->name ,"speaker_stereo_rx"))
+		codec_path = SPEAKER_RX;
+	if (!strcmp(icodec->data->name ,"headset_stereo_speaker_stereo_rx"))
+		codec_path = SPEAKER_HEADSET_RX;
+	adie_codec_wm8958_path_stop(codec_path);
+#else
 	/* Disable ADIE */
 	if (icodec->adie_path) {
 		adie_codec_proceed_stage(icodec->adie_path,
@@ -564,6 +665,7 @@ static int snddev_icodec_close_rx(struct snddev_icodec_state *icodec)
 		adie_codec_close(icodec->adie_path);
 		icodec->adie_path = NULL;
 	}
+#endif
 
 	afe_close(icodec->data->copp_id);
 
@@ -584,12 +686,23 @@ static int snddev_icodec_close_rx(struct snddev_icodec_state *icodec)
 static int snddev_icodec_close_tx(struct snddev_icodec_state *icodec)
 {
 	struct snddev_icodec_drv_state *drv = &snddev_icodec_drv;
-
+#ifdef CONFIG_MFD_WM8958
+	int codec_path;
+#endif
 	wake_lock(&drv->tx_idlelock);
 
 	if (drv->snddev_vreg)
 		vreg_mode_vote(drv->snddev_vreg, 0, SNDDEV_HIGH_POWER_MODE);
 
+#ifdef CONFIG_MFD_WM8958
+	codec_path = HANDSET_TX;
+	if (!strcmp(icodec->data->name, "handset_tx"))
+		codec_path = HANDSET_TX;
+	if (!strcmp(icodec->data->name, "headset_mono_tx"))
+		codec_path = HEADSET_TX;
+	adie_codec_wm8958_path_stop(codec_path);
+	icodec->adie_path = NULL;
+#else
 	/* Disable ADIE */
 	if (icodec->adie_path) {
 		adie_codec_proceed_stage(icodec->adie_path,
@@ -597,6 +710,7 @@ static int snddev_icodec_close_tx(struct snddev_icodec_state *icodec)
 		adie_codec_close(icodec->adie_path);
 		icodec->adie_path = NULL;
 	}
+#endif
 
 	afe_close(icodec->data->copp_id);
 
@@ -606,8 +720,17 @@ static int snddev_icodec_close_tx(struct snddev_icodec_state *icodec)
 	msm_snddev_tx_mclk_free();
 
 	/* Reuse pamp_off for TX platform-specific setup  */
+#ifdef CONFIG_MFD_WM8958
+	if (icodec->data->pamp_off)
+	{
+		icodec->data->pamp_off();
+		cancel_delayed_work(&timer_work);
+		flush_scheduled_work();
+	}
+#else
 	if (icodec->data->pamp_off)
 		icodec->data->pamp_off();
+#endif
 
 	icodec->enabled = 0;
 
@@ -1021,6 +1144,9 @@ static int snddev_icodec_probe(struct platform_device *pdev)
 	} else {
 		dev_info->dev_ops.enable_anc = NULL;
 	}
+#ifdef CONFIG_MFD_WM8958
+	INIT_DELAYED_WORK(&timer_work,timer_worker);
+#endif
 error:
 	return rc;
 }
@@ -1070,7 +1196,9 @@ static int __init snddev_icodec_init(void)
 	mutex_init(&icodec_drv->tx_lock);
 	icodec_drv->rx_active = 0;
 	icodec_drv->tx_active = 0;
+#ifndef CONFIG_MFD_WM8958
 	icodec_drv->snddev_vreg = vreg_init();
+#endif
 
 	wake_lock_init(&icodec_drv->tx_idlelock, WAKE_LOCK_IDLE,
 			"snddev_tx_idle");

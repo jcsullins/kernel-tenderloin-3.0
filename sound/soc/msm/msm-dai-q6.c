@@ -261,7 +261,7 @@ static int msm_dai_q6_slim_bus_hw_params(struct snd_pcm_hw_params *params,
 		break;
 	}
 	dai_data->rate = params_rate(params);
-	tabla_get_logical_addresses(&pgd_la, &inf_la);
+//	tabla_get_logical_addresses(&pgd_la, &inf_la);
 
 	dai_data->port_config.slimbus.slimbus_dev_id =  AFE_SLIMBUS_DEVICE_1;
 	dai_data->port_config.slimbus.slave_dev_pgd_la = pgd_la;

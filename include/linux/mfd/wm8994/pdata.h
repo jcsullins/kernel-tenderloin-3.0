@@ -167,6 +167,12 @@ struct wm8994_pdata {
 
 	/* WM8958 microphone bias configuration */
 	int micbias[2];
+	
+	int gpio_ldo1_enable;
+	int gpio_ldo2_enable;
+	unsigned int (*wm8994_setup)(void);
+	void (*wm8994_shutdown)(void);
+	int (*wm8994_get_boardtype)(void);
 };
 
 #endif

@@ -38,7 +38,7 @@ int pas_init_image(enum pas_id id, const u8 *metadata, size_t size)
 	u32 scm_ret = 0;
 	/* Make memory physically contiguous */
 	void *mdata_buf = kmemdup(metadata, size, GFP_KERNEL);
-
+	
 	if (!mdata_buf)
 		return -ENOMEM;
 

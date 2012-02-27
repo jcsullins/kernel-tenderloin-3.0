@@ -35,6 +35,10 @@
 #include "snddev_mi2s.h"
 #include "snddev_virtual.h"
 
+#ifdef CONFIG_MFD_WM8958
+#include <linux/mfd/wm8994/wm8958_topaz_profile.h>
+#endif
+
 #ifdef CONFIG_DEBUG_FS
 static struct dentry *debugfs_hsed_config;
 static void snddev_hsed_config_modify_setting(int type);
@@ -448,6 +452,7 @@ done:
 	snddev_reg_l10 = NULL;
 }
 
+//#if !defined(CONFIG_MACH_TENDERLOIN) && !defined(CONFIG_MACH_MSM8X60_OPAL)
 static int msm_snddev_enable_amic_power(void)
 {
 	int ret = 0;
@@ -503,6 +508,7 @@ static void msm_snddev_disable_amic_power(void)
 		pr_err("%s: Disabling amic power failed\n", __func__);
 #endif
 }
+//#endif
 
 static int msm_snddev_enable_anc_power(void)
 {
@@ -692,8 +698,13 @@ static struct snddev_icodec_data snddev_imic_data = {
 	.profile = &imic_profile,
 	.channel_mode = 1,
 	.default_sample_rate = 48000,
+#if defined(CONFIG_MACH_TENDERLOIN)|| defined(CONFIG_MACH_MSM8X60_OPAL)	
+	.pamp_on = NULL,
+	.pamp_off = NULL,
+#else
 	.pamp_on = msm_snddev_enable_amic_power,
 	.pamp_off = msm_snddev_disable_amic_power,
+#endif
 };
 
 static struct platform_device msm_imic_device = {
@@ -743,8 +754,13 @@ static struct snddev_icodec_data snddev_ihs_stereo_rx_data = {
 	.profile = &headset_ab_cpls_profile,
 	.channel_mode = 2,
 	.default_sample_rate = 48000,
+#if defined(CONFIG_MACH_TENDERLOIN)|| defined(CONFIG_MACH_MSM8X60_OPAL)
+	.voltage_on = NULL,
+	.voltage_off = NULL,
+#else
 	.voltage_on = msm_snddev_voltage_on,
 	.voltage_off = msm_snddev_voltage_off,
+#endif
 };
 
 static struct platform_device msm_headset_stereo_device = {
@@ -813,8 +829,13 @@ static struct snddev_icodec_data snddev_ispkr_stereo_data = {
 	.profile = &ispkr_stereo_profile,
 	.channel_mode = 2,
 	.default_sample_rate = 48000,
+#if defined(CONFIG_MACH_TENDERLOIN)|| defined(CONFIG_MACH_MSM8X60_OPAL)
+	.pamp_on = adie_codec_wm8958_poweramp_on,
+	.pamp_off = adie_codec_wm8958_poweramp_off,
+#else
 	.pamp_on = msm_snddev_poweramp_on,
 	.pamp_off = msm_snddev_poweramp_off,
+#endif
 };
 
 static struct platform_device msm_ispkr_stereo_device = {
@@ -1213,10 +1234,15 @@ static struct snddev_icodec_data snddev_ihs_stereo_speaker_stereo_rx_data = {
 	.profile = &ihs_stereo_speaker_stereo_rx_profile,
 	.channel_mode = 2,
 	.default_sample_rate = 48000,
+#if defined(CONFIG_MACH_TENDERLOIN)|| defined(CONFIG_MACH_MSM8X60_OPAL)
+	.pamp_on = adie_codec_wm8958_poweramp_on,
+	.pamp_off = adie_codec_wm8958_poweramp_off,
+#else
 	.pamp_on = msm_snddev_poweramp_on,
 	.pamp_off = msm_snddev_poweramp_off,
 	.voltage_on = msm_snddev_voltage_on,
 	.voltage_off = msm_snddev_voltage_off,
+#endif
 };
 
 static struct platform_device msm_ihs_stereo_speaker_stereo_rx_device = {
@@ -2664,6 +2690,22 @@ static struct platform_device *snd_devices_ftm[] __initdata = {
 static struct platform_device *snd_devices_ftm[] __initdata = {};
 #endif
 
+static struct platform_device *snd_devices_tenderloin[] __initdata = {
+//	&msm_iearpiece_device,
+	&msm_imic_device,
+	&msm_ispkr_stereo_device,
+//	&msm_snddev_hdmi_stereo_rx_device,
+	&msm_headset_mic_device,
+//	&msm_ispkr_mic_device,
+//	&msm_bt_sco_earpiece_device,
+//	&msm_bt_sco_mic_device,
+	&msm_headset_stereo_device,
+//	&msm_itty_mono_tx_device,
+//	&msm_itty_mono_rx_device,
+//	&msm_handset_dual_mic_endfire_device,
+//	&msm_ispkr_headset_stereo_device,
+	&msm_ihs_stereo_speaker_stereo_rx_device,
+};
 
 void __init msm_snddev_init(void)
 {
@@ -2708,6 +2750,12 @@ void __init msm_snddev_init(void)
 
 		platform_add_devices(snd_devices_ftm,
 				ARRAY_SIZE(snd_devices_ftm));
+	} else if (machine_is_tenderloin()) {
+		for (i = 0; i < ARRAY_SIZE(snd_devices_tenderloin); i++)
+			snd_devices_tenderloin[i]->id = dev_id++;
+
+		platform_add_devices(snd_devices_tenderloin,
+		ARRAY_SIZE(snd_devices_tenderloin));
 	}
 
 #ifdef CONFIG_DEBUG_FS
