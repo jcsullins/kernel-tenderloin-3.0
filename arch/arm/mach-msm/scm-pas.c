@@ -169,6 +169,8 @@ int pas_supported(enum pas_id id)
 	if (!secure_pil)
 		return 0;
 
+	if (machine_is_tenderloin()) return 0;
+
 	/*
 	 * 8660 SCM doesn't support querying secure PIL support so just return
 	 * true if not overridden on the command line.
