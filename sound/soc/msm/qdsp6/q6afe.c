@@ -278,7 +278,8 @@ int afe_sizeof_cfg_cmd(u16 port_id)
 	case SECONDARY_I2S_TX:
 	case MI2S_RX:
 	case MI2S_TX:
-		ret_size = SIZEOF_CFG_CMD(afe_port_mi2s_cfg);
+		// ret_size = SIZEOF_CFG_CMD(afe_port_mi2s_cfg);
+		ret_size = 36; // TODO -JCS
 		break;
 	case HDMI_RX:
 		ret_size = SIZEOF_CFG_CMD(afe_port_hdmi_multi_ch_cfg);
